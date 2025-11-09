@@ -2,6 +2,8 @@
 <html lang="zh-CN">
 
 <head>
+    <meta name="robots" content="noindex, nofollow"> 
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>章鱼喷墨机</title>
@@ -23732,14 +23734,17 @@ async function triggerProactiveMessage(chatObject, type) {
             ...historyForApi.map(msg => ({ role: msg.role, content: msg.content }))
         ];
         const aiResponseText = await callAiApi(messages);
+        // 重要：在处理回复前，先从历史记录中移除我们添加的系统指令
         chatObject.history.pop();
         
         const cleanedResponse = await processAiCommands(aiResponseText, chatObject);
         const replies = cleanedResponse.split('\n').filter(line => line.trim() !== '');
         
-        // --- 修改：在这里直接处理消息，不再放入队列 ---
+        // --- 核心修复逻辑 ---
         if (replies.length > 0) {
+            // 遍历AI返回的每一句话
             for (const replyContent of replies) {
+                // 为每一句话创建一个独立的消息对象
                 const message = {
                     id: `msg_proactive_${Date.now()}_${Math.random()}`,
                     role: 'assistant',
@@ -23747,6 +23752,8 @@ async function triggerProactiveMessage(chatObject, type) {
                     parts: [{ type: 'text', text: replyContent.trim() }],
                     timestamp: Date.now(),
                 };
+
+                // 如果是群聊，正确地找出并设置发送者ID
                 if (type === 'group') {
                     const nameMatch = replyContent.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)：/);
                     if (nameMatch) {
@@ -23756,17 +23763,16 @@ async function triggerProactiveMessage(chatObject, type) {
                         }
                     }
                 }
-                // 直接将消息添加到历史记录
+                
+                // 将这个独立的消息对象添加到历史记录中
                 chatObject.history.push(message);
             }
 
-            // 立即保存数据
+            // 在所有消息都添加完毕后，进行一次性的保存和UI更新
             await saveData();
-
-            // 立即刷新聊天列表UI
             renderChatList();
     
-            // 最后再发出通知
+            // 发送一个桌面通知，告诉用户有新消息
             addNotificationToQueue({
                 avatar: chatObject.avatar,
                 text: `<strong>${chatObject.name || chatObject.remarkName}</strong><br>给你发来了一条新消息...`,
@@ -23774,10 +23780,11 @@ async function triggerProactiveMessage(chatObject, type) {
                 type: type
             });
         }
-        // --- 修改结束 ---
+        // --- 修复结束 ---
 
     } catch (error) {
         console.error(`AI后台回复失败 for ${chatObject.name || chatObject.remarkName}:`, error);
+        // 如果出错，也要移除系统指令，防止污染聊天记录
         chatObject.history.pop();
     }
 }
