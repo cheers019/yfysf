@@ -16347,13 +16347,15 @@ await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
         // ----------------------------------------
 
         // 后续的后台任务
-        if (currentChatType === 'private') {
-            const character = chat;
-            character.messageCountSinceLastDiary = (character.messageCountSinceLastDiary || 0) + 1;
-            if (character.messageCountSinceLastDiary >= 5 && Math.random() < 0.9) {
-                generateDiaryEntry();
-            }
-        }
+if (currentChatType === 'private') {
+    const character = chat;
+    character.messageCountSinceLastDiary = (character.messageCountSinceLastDiary || 0) + 1;
+    if (character.messageCountSinceLastDiary >= 5 && Math.random() < 0.9) {
+        // 【摄像头 7号】: 检查自动触发时，是哪个角色满足了条件
+        console.log(`[摄像头 7号 - 自动触发] 检测到角色 "${character.remarkName}" (ID: ${character.id}) 满足自动写日记条件，即将调用写作函数。`);
+        generateDiaryEntry(character.id); 
+    }
+}
 
         if (chat.povCache) {
             chat.povCache = null;
@@ -17746,13 +17748,15 @@ function setupStickerSystem() {
         // --- DIARY SYSTEM FUNCTIONS ---
 
 // 用于生成日记的 AI 调用函数
-async function generateDiaryEntry(isManual = false) {
+async function generateDiaryEntry(characterId, isManual = false) {
     if (isGenerating) {
-        //showToast('AI正在思考中，请稍等...');
         return;
     }
-    const character = db.characters.find(c => c.id === currentChatId);
-    if (!character) return;
+    const character = db.characters.find(c => c.id === characterId);
+    if (!character) {
+        console.error(`[写作失败] 找不到ID为 "${characterId}" 的角色来写日记。`);
+        return;
+    }
 
     if (isManual) {
         showToast('正在为您撰写日记...');
@@ -17794,11 +17798,12 @@ async function generateDiaryEntry(isManual = false) {
         
         const aiResponseText = await callAiApi(messagesForApi);
         
-        await saveDiaryEntry(aiResponseText);
+        // 【终极修复 A】: 调用那个独一无二的新名字的函数
+        await saveDiaryEntry_FINAL_FIX(aiResponseText, character.id); 
         
         showToast('一篇新的日记已经写好了！');
         
-        if (document.getElementById('diary-screen').classList.contains('active')) {
+        if (document.getElementById('diary-screen').classList.contains('active') && currentChatId === character.id) {
             renderDiaries();
         }
 
@@ -17816,14 +17821,50 @@ async function generateDiaryEntry(isManual = false) {
     }
 }
 
-// 保存日记并处理存储逻辑
-// (请找到文件中的旧 saveDiaryEntry 函数，并用下面的代码完整替换它)
+// 【终极修复 B】: 给我们的“真悟空”起一个绝不会重复的新名字！
+async function saveDiaryEntry_FINAL_FIX(content, characterId) {
+    const character = db.characters.find(c => c.id === characterId);
+    if (!character) {
+        console.error("保存日记失败：找不到ID为 " + characterId + " 的角色。");
+        return;
+    }
+
+    if (!Array.isArray(character.diaries)) {
+        character.diaries = [];
+    }
+
+    const newDiary = {
+        id: `diary_${Date.now()}`,
+        timestamp: Date.now(),
+        content: content.trim(),
+        isFavorited: false
+    };
+
+    character.diaries.push(newDiary);
+    
+    const favoritedDiaries = character.diaries.filter(d => d.isFavorited);
+    let unfavoritedDiaries = character.diaries.filter(d => !d.isFavorited);
+
+    if (unfavoritedDiaries.length === 6) {
+        unfavoritedDiaries.sort((a, b) => a.timestamp - b.timestamp);
+        unfavoritedDiaries = unfavoritedDiaries.slice(-1);
+    }
+
+    character.diaries = [...favoritedDiaries, ...unfavoritedDiaries];
+    
+    character.messageCountSinceLastDiary = 0;
+    
+    await saveData();
+}
 
 // 保存日记并处理存储逻辑
 // (请找到文件中的旧 saveDiaryEntry 函数，并用下面的代码完整替换它)
 
 // 保存日记并处理存储逻辑
-async function saveDiaryEntry(content) {
+// (请找到文件中的旧 saveDiaryEntry 函数，并用下面的代码完整替换它)
+
+// 保存日记并处理存储逻辑
+async function saveDiaryEntry(content, characterId) {
     const character = db.characters.find(c => c.id === currentChatId);
     if (!character) return;
     
@@ -18182,7 +18223,7 @@ function setupDiarySystem() {
     });
     openFavoritesBtn.addEventListener('click', () => { renderFavoriteDiaries(); switchScreen('favorites-diary-screen'); diaryActionSheet.classList.remove('visible'); });
 
-    document.getElementById('generate-diary-manually-btn').addEventListener('click', () => generateDiaryEntry(true));
+    document.getElementById('generate-diary-manually-btn').addEventListener('click', () => generateDiaryEntry(currentChatId, true));
     document.getElementById('write-user-diary-form').addEventListener('submit', saveUserDiary);
     document.getElementById('ai-peek-btn').addEventListener('click', () => {
         const list = document.getElementById('ai-peek-selection-list');
