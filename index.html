@@ -23734,13 +23734,18 @@ async function triggerProactiveMessage(chatObject, type) {
             ...historyForApi.map(msg => ({ role: msg.role, content: msg.content }))
         ];
         const aiResponseText = await callAiApi(messages);
+        
         // 重要：在处理回复前，先从历史记录中移除我们添加的系统指令
         chatObject.history.pop();
         
         const cleanedResponse = await processAiCommands(aiResponseText, chatObject);
-        const replies = cleanedResponse.split('\n').filter(line => line.trim() !== '');
-        
-        // --- 核心修复逻辑 ---
+
+        // ▼▼▼ 核心修复：使用正则表达式替换简单的 split('\n') ▼▼▼
+        // 这个正则表达式能准确匹配 "[...]" 或 "<div...>" 格式的每一条独立消息
+        const messageRegex = /(\[[\s\S]*?\]|<div class="ai-theater"[\s\S]*?<\/div>)/g;
+        const replies = cleanedResponse.match(messageRegex) || [];
+        // ▲▲▲ 修复结束 ▲▲▲
+
         if (replies.length > 0) {
             // 遍历AI返回的每一句话
             for (const replyContent of replies) {
@@ -23772,15 +23777,20 @@ async function triggerProactiveMessage(chatObject, type) {
             await saveData();
             renderChatList();
     
-            // 发送一个桌面通知，告诉用户有新消息
-            addNotificationToQueue({
-                avatar: chatObject.avatar,
-                text: `<strong>${chatObject.name || chatObject.remarkName}</strong><br>给你发来了一条新消息...`,
-                chatId: chatObject.id,
-                type: type
-            });
+            // 检查当前更新的聊天是否就是屏幕上正在显示的聊天
+            if (chatObject.id === currentChatId) {
+                // 如果是，则立即刷新聊天界面以显示所有新消息
+                renderMessages(false, true); 
+            } else {
+                // 如果不是（例如用户在其他界面），才发送顶部横幅通知
+                addNotificationToQueue({
+                    avatar: chatObject.avatar,
+                    text: `<strong>${chatObject.name || chatObject.remarkName}</strong><br>给你发来了一条新消息...`,
+                    chatId: chatObject.id,
+                    type: type
+                });
+            }
         }
-        // --- 修复结束 ---
 
     } catch (error) {
         console.error(`AI后台回复失败 for ${chatObject.name || chatObject.remarkName}:`, error);
