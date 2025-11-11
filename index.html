@@ -6463,7 +6463,7 @@ const showToast = (message) => {
             setTimeout(() => toastElement.classList.remove('show'), 3000);
         };
         const pad = (num) => num.toString().padStart(2, '0');
-        async function callAiApi(messages) {
+async function callAiApi(messages) {
     const { provider, url, key, model } = db.apiSettings;
     if (!url || !key || !model) {
         throw new Error('API设置不完整');
@@ -6473,20 +6473,19 @@ const showToast = (message) => {
     let headers = { 'Content-Type': 'application/json' };
     let requestBody;
 
-    // 根据不同的服务商构建请求
     if (provider === 'gemini') {
         endpoint = `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}`;
         requestBody = {
             contents: messages,
             generationConfig: {}
         };
-    } else { // OpenAI, DeepSeek, Claude, NewAPI 等兼容格式
+    } else { 
         endpoint = `${url}/v1/chat/completions`;
         headers['Authorization'] = `Bearer ${getRandomValue(key)}`;
         requestBody = {
             model,
             messages,
-            stream: false // 论坛功能需要非流式输出
+            stream: false
         };
     }
 
@@ -6496,39 +6495,68 @@ const showToast = (message) => {
         body: JSON.stringify(requestBody)
     });
 
+    // 【核心修复 1】: 无论请求成功与否，都先获取原始文本，方便调试
+    const rawResponseText = await response.text();
+
     if (!response.ok) {
-        const errorText = await response.text();
-        console.error("API Error Response:", errorText);
-        // 如果返回的是HTML错误页面，给出更清晰的提示
-        if (errorText.trim().startsWith('<')) {
-            throw new Error(`API返回了一个错误页面(HTML)，而不是JSON数据。`);
+        console.error("API 错误响应原文:", rawResponseText);
+        if (rawResponseText.trim().startsWith('<')) {
+            throw new Error(`API返回了一个HTML错误页面，可能是代理或网络问题。`);
         }
-        throw new Error(`AI服务请求失败: ${response.status} ${errorText}`);
+        throw new Error(`AI服务请求失败: ${response.status} ${rawResponseText}`);
     }
 
-    const data = await response.json();
+    // 【核心修复 2】: 增加一个全面的JSON解析和验证过程
+    try {
+        const data = JSON.parse(rawResponseText);
 
-    // 根据不同服务商解析最终的文本内容
-    if (provider === 'gemini') {
-        if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
-            return data.candidates[0].content.parts[0].text;
+        // A. Gemini 的验证逻辑
+        if (provider === 'gemini') {
+            // 检查是否因为安全原因被拦截
+            if (data.promptFeedback && data.promptFeedback.blockReason) {
+                throw new Error(`内容被 Gemini 安全策略拦截，原因: ${data.promptFeedback.blockReason}`);
+            }
+            // 检查是否有有效内容
+            if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0].text) {
+                return data.candidates[0].content.parts[0].text;
+            } else {
+                // 如果有候选者但内容为空
+                const finishReason = data.candidates && data.candidates[0] ? data.candidates[0].finishReason : '未知';
+                if (finishReason === 'SAFETY') {
+                    throw new Error(`回复内容被 Gemini 安全策略拦截。`);
+                }
+                throw new Error(`Gemini 返回了空内容，结束原因: ${finishReason}`);
+            }
+        } 
+        // B. OpenAI 兼容格式的验证逻辑
+        else { 
+            // 检查是否有 choices 数组
+            if (!data.choices || data.choices.length === 0) {
+                // 如果连 choices 都没有，说明可能有其他错误
+                if (data.error) {
+                    throw new Error(`API 返回错误: ${data.error.message}`);
+                }
+                throw new Error("API 返回了空的 'choices' 数组，可能是模型过载或提示词问题。");
+            }
+            // 检查是否因为内容过滤而结束
+            const finishReason = data.choices[0].finish_reason;
+            if (finishReason === 'content_filter') {
+                throw new Error("内容触发了 API 的安全审核被拦截。");
+            }
+            // 检查是否有消息内容
+            if (data.choices[0].message && data.choices[0].message.content) {
+                return data.choices[0].message.content;
+            } else {
+                throw new Error(`API 返回了空消息，结束原因: ${finishReason}`);
+            }
         }
-   } else { // OpenAI, DeepSeek, Claude, NewAPI 等兼容格式
-    if (data.choices && data.choices.length > 0 && data.choices[0].message) {
-        // 确保 choices 数组不是空的
-        return data.choices[0].message.content;
-    } else {
-        // 如果 choices 数组是空的, 抛出一个更明确的错误
-        const finishReason = data.choices && data.choices.length > 0 ? data.choices[0].finish_reason : 'unknown';
-        if (finishReason === 'content_filter') {
-            throw new Error("内容触发了API的安全审核被拦截。");
-        }
-        throw new Error("API返回了空结果，请检查模型或提示词。");
+    } catch (e) {
+        // 如果 JSON 解析本身就失败了，或者上面的任何一步抛出了错误
+        console.error("解析API响应或验证内容时出错:", e);
+        console.error("导致错误的原始响应文本:", rawResponseText); // 打印原始文本，帮助排查
+        // 抛出一个更友好的、包含了原始错误的错误
+        throw new Error(`处理AI响应失败: ${e.message}`);
     }
-}
-    
-    // 如果上面的路径都找不到，抛出错误
-    throw new Error('未能从API响应中解析出有效的文本内容。');
 }
 // ▲▲▲ 替换结束 ▲▲▲
     document.addEventListener('DOMContentLoaded', () => {
@@ -15414,326 +15442,84 @@ prompt += `
                            
 // ▼▼▼ 请用这个【毫无省略】的完整函数，替换掉您文件中旧的同名函数 ▼▼▼
 async function getAiReply() {
-	if (currentChatType === 'private') {
-    const character = db.characters.find(c => c.id === currentChatId);
-    if (character && character.isBlockedByAi) {
-        showToast('你已被对方拉黑');
-        return; // 阻止函数继续执行
+    // 【摄像头 A号 - 控制室】: AI回复任务启动！
+    console.log("【摄像头 A号 - 控制室】: AI回复任务启动！");
+
+    if (currentChatType === 'private') {
+        const character = db.characters.find(c => c.id === currentChatId);
+        if (character && character.isBlockedByAi) {
+            showToast('你已被对方拉黑');
+            return;
+        }
     }
-}
-    if (isGenerating) return;
-    const {url, key, model} = db.apiSettings;
+    if (isGenerating) {
+        console.log("【控制室】: 任务中断，因为AI正在回复中。");
+        return;
+    }
+    const { url, key, model } = db.apiSettings;
     if (!url || !key || !model) {
         showToast('请先在“api”应用中完成设置！');
         switchScreen('api-settings-screen');
         return;
     }
-
-    const banApi = URLBlacklist.some((api)=>{
-        return url.indexOf(api) !== -1
-    })
-    if(banApi){
-        alert('此API网址已加入黑名单，请勿使用')
+    const banApi = URLBlacklist.some((api) => {
+        return url.indexOf(api) !== -1;
+    });
+    if (banApi) {
+        alert('此API网址已加入黑名单，请勿使用');
         return;
     }
     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-    if (!chat) return;
-    
+    if (!chat) {
+        console.error("【控制室】: 任务中断，找不到当前聊天对象。");
+        return;
+    }
+
+    showTypingIndicator();
     isGenerating = true;
     getReplyBtn.disabled = true;
 
-    // 在这里显示“正在输入”
-    showTypingIndicator(); 
-    messageArea.scrollTop = messageArea.scrollHeight;
-
     try {
+        // 【摄像头 B号 - 控制室】: 开始准备发送给AI的指令
+        console.log("【摄像头 B号 - 控制室】: 开始准备发送给AI的指令...");
         let systemPrompt, requestBody;
         if (currentChatType === 'private') {
             systemPrompt = generatePrivateSystemPrompt(chat);
         } else {
             systemPrompt = generateGroupSystemPrompt(chat);
         }
-        // START: 核心修正 - 过滤掉所有 system 角色的消息
-const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role !== 'system');
-// END: 核心修正
-        try {
-            if (currentChatType === 'private' && chat.povCache && chat.povCache.conversations) {
-                const conversations = Object.values(chat.povCache.conversations);
-                if (conversations.length > 0) {
-                    conversations.sort((a, b) => b.timestamp - a.timestamp);
-                    const mostRecentConversation = conversations[0];
-                    const otherChatInfo = chat.povCache.chatList.find(c => c.chatId === Object.keys(chat.povCache.conversations).find(key => chat.povCache.conversations[key] === mostRecentConversation));
-                    if (mostRecentConversation && otherChatInfo) {
-                        const memorySnippet = mostRecentConversation.history.slice(-5);
-                        let otherPartyName = "某人";
-                        if(otherChatInfo.type === 'private') {
-                            otherPartyName = otherChatInfo.otherParty.name;
-                        } else {
-                            otherPartyName = otherChatInfo.groupName;
-                        }
-                        const memoryText = memorySnippet.map(msg => `${msg.sender}: ${msg.content}`).join('\n');
-                        const contextMessageContent = `[system: 这是你最近在后台和“${otherPartyName}”的一段对话回顾，发生在我与你当前对话之前。你需要参考它来记起最近发生的事，并在与我的对话中自然地体现出来。\n--- 对话回顾开始 ---\n${memoryText}\n--- 对话回顾结束 ---]`;
-                        historySlice.push({
-                            role: 'user',
-                            content: contextMessageContent,
-                            parts: [{ type: 'text', text: contextMessageContent }]
-                        });
-                    }
-                }
-            }
-        } catch (error) {
-            console.error("注入AI后台聊天记忆时出错:", error);
-        }
+        console.log("【摄像头 B.1】: 系统指令(Prompt)已生成。");
         
-        if (currentChatType === 'private') {
-            const lastUserMessage = historySlice[historySlice.length - 1]?.content;
-            if (lastUserMessage && /帖子|论坛|分享/.test(lastUserMessage)) {
-                let latestUserPost = null;
-                for (const boardId in forumCache) {
-                    const userPost = forumCache[boardId].find(t => t.authorId === 'user');
-                    if (userPost && (!latestUserPost || userPost.id > latestUserPost.id)) {
-                        latestUserPost = userPost;
-                    }
-                }
-                if (latestUserPost) {
-                    const postContext = `[system-forum-post: {"title":"${latestUserPost.title}", "content":"${latestUserPost.content}"}]`;
-                    historySlice.push({
-                        role: 'user',
-                        content: postContext,
-                        parts: [{ type: 'text', text: postContext }]
-                    });
-                    showToast('AI正在回忆您的帖子...');
-                }
-            }
-        }
-
+        const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role !== 'system');
+        
         try {
             const character = chat;
             const pendingMoments = (typeof getPendingMomentsForRole === 'function') ? await getPendingMomentsForRole(character.id, 3) : [];
-            let momentsPromptPart = '';
             if (pendingMoments && pendingMoments.length > 0) {
-                const momentsData = pendingMoments.map(m => ({
-                    id: m.id,
-                    author: m.author,
-                    text: m.text,
-                    imageDesc: m.imageDesc
-                }));
-                momentsPromptPart = `\n[system-moments: ${JSON.stringify(momentsData)}]`;
-            }
-            if (momentsPromptPart) {
-                historySlice.push({
-                    role: 'user',
-                    content: momentsPromptPart,
-                    parts: [{ type: 'text', text: momentsPromptPart }]
-                });
+                const momentsData = pendingMoments.map(m => ({ id: m.id, author: m.author, text: m.text, imageDesc: m.imageDesc }));
+                const momentsPromptPart = `\n[system-moments: ${JSON.stringify(momentsData)}]`;
+                historySlice.push({ role: 'user', content: momentsPromptPart, parts: [{ type: 'text', text: momentsPromptPart }] });
+                console.log("【摄像头 B.2】: 已注入待办动态信息。");
             }
         } catch(e) {
-            console.warn('attach pending moments failed', e);
+            console.warn('注入动态信息时出错:', e);
         }
 
-        if (db.apiSettings.provider === 'gemini') {
-            const contents = historySlice.map(msg => {
-                const role = msg.role === 'assistant' ? 'model' : 'user';
-                let parts = msg.parts && msg.parts.length > 0 ? msg.parts.map(p => {
-                    if (p.type === 'text' || p.type === 'html') return {text: p.text};
-                    if (p.type === 'image') {
-                        const match = p.data.match(/^data:(image\/(.+));base64,(.*)$/);
-                        if (match) return {inline_data: {mime_type: match[1], data: match[3]}};
-                    }
-                    return null;
-                }).filter(p => p) : [{text: msg.content}];
-                return {role, parts};
-            });
-            requestBody = {
-                contents: contents,
-                system_instruction: {parts: [{text: systemPrompt}]},
-                generationConfig: {}
-            };
-        } else {
-            const messages = [
-              {role: 'system', content: systemPrompt}, 
-...historySlice.map(msg => {
-    if (msg.parts && msg.parts.some(p => p.type === 'image')) {
-        const textPart = msg.parts.find(p => p.type === 'text');
-        const imagePart = msg.parts.find(p => p.type === 'image');
-        if (db.apiSettings.provider === 'claude') {
-            const base64Match = imagePart.data.match(/^data:(image\/.+);base64,(.*)$/);
-            if (!base64Match) return { role: msg.role, content: textPart ? textPart.text : '' };
-            const mediaType = base64Match[1];
-            const base64Data = base64Match[2];
-            const contentParts = [
-                { type: 'text', text: textPart ? textPart.text : ' ' },
-                {
-                    type: 'image',
-                    source: {
-                        type: 'base64',
-                        media_type: mediaType,
-                        data: base64Data
-                    }
-                }
-            ];
-            return { role: msg.role, content: contentParts };
-        } else {
-            const contentParts = [
-                { type: 'text', text: textPart ? textPart.text : ' ' },
-                {
-                    type: 'image_url',
-                    image_url: {
-                        url: imagePart.data
-                    }
-                }
-            ];
-            return { role: msg.role, content: contentParts };
-        }
-    } else {
-        return { role: msg.role, content: msg.content };
-    }
-})
-            ];
-            requestBody = {model: model, messages: messages, stream: true};
-        }
-        
-        const endpoint = (db.apiSettings.provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
-        const headers = (db.apiSettings.provider === 'gemini') ? {'Content-Type': 'application/json'} : {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${getRandomValue(key)}`
-        };
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody)
-        });
-        if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`);
-        await processStream(response, chat, db.apiSettings.provider);
-    } catch (error) {
-        console.error('AI回复失败:', error);
-        showToast(`AI回复失败: ${error.message}`);
-        hideTypingIndicator(); // 如果发生错误，也要隐藏提示
-        if (isCallRinging) {
-            endCall('error');
-        }
-    } finally {
-        isGenerating = false;
-        getReplyBtn.disabled = false;
-        // 注意：隐藏提示的逻辑已从此处的 finally 块中移除
-    }
-}
-
-async function getAiReply() {if (currentChatType === 'private') {
-    const character = db.characters.find(c => c.id === currentChatId);
-    if (character && character.isBlockedByAi) {
-        showToast('你已被对方拉黑');
-        return; // 阻止函数继续执行
-    }
-}
-    if (isGenerating) return;
-    const {url, key, model} = db.apiSettings;
-    if (!url || !key || !model) {
-        showToast('请先在“api”应用中完成设置！');
-        switchScreen('api-settings-screen');
-        return;
-    }
-
-    const banApi = URLBlacklist.some((api)=>{
-        return url.indexOf(api) !== -1
-    })
-    if(banApi){
-        alert('此API网址已加入黑名单，请勿使用')
-        return
-    }
-    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-    if (!chat) return;// --- 修改：将“正在输入”提示移到顶部状态栏 ---
-const subtitle = document.getElementById('chat-room-subtitle');
-const statusTextElement = document.getElementById('chat-room-status-text');
-
-if (subtitle && statusTextElement) {
-    // 隐藏绿色的在线圆点
-    subtitle.querySelector('.online-indicator').style.display = 'none';
-    // 修改状态文字
-    statusTextElement.textContent = '对方正在输入中...';
-    // 添加动画效果Class
-    statusTextElement.classList.add('typing-status');
-}
-// 确保旧的底部提示不再显示
-typingIndicator.style.display = 'none';
-messageArea.scrollTop = messageArea.scrollHeight;
-
-    isGenerating = true;
-    getReplyBtn.disabled = true;
-   
-
-    try {
-        let systemPrompt, requestBody;
-        if (currentChatType === 'private') {
-            systemPrompt = generatePrivateSystemPrompt(chat);
-        } else {
-            systemPrompt = generateGroupSystemPrompt(chat);
-        }
-        // START: 核心修正 - 过滤掉所有 system 角色的消息
-const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role !== 'system');
-// END: 核心修正
-
-        try {
-            const character = chat;
-            const pendingMoments = (typeof getPendingMomentsForRole === 'function') ? await getPendingMomentsForRole(character.id, 3) : [];
-            let momentsPromptPart = '';
-            if (pendingMoments && pendingMoments.length > 0) {
-                const momentsData = pendingMoments.map(m => ({
-                    id: m.id,
-                    author: m.author,
-                    text: m.text,
-                    imageDesc: m.imageDesc
-                }));
-                momentsPromptPart = `\n[system-moments: ${JSON.stringify(momentsData)}]`;
-            }
-            if (momentsPromptPart) {
-                historySlice.push({
-                    role: 'user',
-                    content: momentsPromptPart,
-                    parts: [{ type: 'text', text: momentsPromptPart }]
-                });
-            }
-        } catch(e) {
-            console.warn('attach pending moments failed', e);
-        }
-
-        // --- 核心修复：这里修正了数组嵌套问题，并增加了对Claude图片格式的兼容 ---
         const messages = [
-            {role: 'system', content: systemPrompt},
+            { role: 'system', content: systemPrompt },
             ...historySlice.map(msg => {
                 if (msg.parts && msg.parts.some(p => p.type === 'image')) {
                     const textPart = msg.parts.find(p => p.type === 'text');
                     const imagePart = msg.parts.find(p => p.type === 'image');
-
                     if (db.apiSettings.provider === 'claude') {
                         const base64Match = imagePart.data.match(/^data:(image\/.+);base64,(.*)$/);
                         if (!base64Match) return { role: msg.role, content: textPart ? textPart.text : '' };
-
                         const mediaType = base64Match[1];
                         const base64Data = base64Match[2];
-
-                        const contentParts = [
-                            { type: 'text', text: textPart ? textPart.text : ' ' },
-                            {
-                                type: 'image',
-                                source: {
-                                    type: 'base64',
-                                    media_type: mediaType,
-                                    data: base64Data
-                                }
-                            }
-                        ];
+                        const contentParts = [{ type: 'text', text: textPart ? textPart.text : ' ' }, { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } }];
                         return { role: msg.role, content: contentParts };
                     } else {
-                        const contentParts = [
-                            { type: 'text', text: textPart ? textPart.text : ' ' },
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: imagePart.data
-                                }
-                            }
-                        ];
+                        const contentParts = [{ type: 'text', text: textPart ? textPart.text : ' ' }, { type: 'image_url', image_url: { url: imagePart.data } }];
                         return { role: msg.role, content: contentParts };
                     }
                 } else {
@@ -15754,56 +15540,46 @@ const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role 
                 }).filter(p => p) : [{ text: msg.content }];
                 return { role: msg.role === 'assistant' ? 'model' : 'user', parts };
             });
-
-            requestBody = {
-                contents: geminiMessages,
-                system_instruction: { parts: [{ text: systemPrompt }] },
-                generationConfig: {}
-            };
+            requestBody = { contents: geminiMessages, system_instruction: { parts: [{ text: systemPrompt }] }, generationConfig: {} };
         } else {
-            requestBody = {model: model, messages: messages, stream: true};
+            requestBody = { model: model, messages: messages, stream: true };
         }
+        
+        // 【摄像头 C号 - 控制室】: 准备发起网络请求
+        console.log("【摄像头 C号 - 控制室】: 准备发起网络请求...", { provider: db.apiSettings.provider });
+        console.log("【摄像头 C.1】: 最终发送给API的请求体:", JSON.parse(JSON.stringify(requestBody))); // 使用深拷贝打印，防止后续被修改
 
         const endpoint = (db.apiSettings.provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
-        const headers = (db.apiSettings.provider === 'gemini') ? {'Content-Type': 'application/json'} : {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${getRandomValue(key)}`
-        };
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody)
-        });
-        if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`);
+        const headers = (db.apiSettings.provider === 'gemini') ? { 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json', Authorization: `Bearer ${getRandomValue(key)}` };
+        
+        const response = await fetch(endpoint, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
+        
+        // 【摄像头 D号 - 控制室】: 收到网络响应
+        console.log(`【摄像头 D号 - 控制室】: 收到网络响应，状态码: ${response.status}`, { ok: response.ok });
+
+        if (!response.ok) {
+            // 如果网络请求本身就失败了，直接抛出错误
+            throw new Error(`API 网络错误: ${response.status} ${await response.text()}`);
+        }
+        
+        // 【摄像头 E号 - 控制室】: 准备进入流式处理
+        console.log("【摄像头 E号 - 控制室】: 网络请求成功，准备进入流式数据处理...");
         await processStream(response, chat, db.apiSettings.provider);
+        console.log("【摄像头 F号 - 控制室】: 流式数据处理完毕。");
 
     } catch (error) {
-        console.error('AI回复失败:', error);
-        showToast(`AI回复失败: ${error.message}`);
-    }finally {
-    isGenerating = false;
-    getReplyBtn.disabled = false;
-
-    // --- 修改：恢复顶部的在线状态 ---
-    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-    if (chat) {
-        const subtitle = document.getElementById('chat-room-subtitle');
-        const statusTextElement = document.getElementById('chat-room-status-text');
-
-        if (subtitle && statusTextElement && currentChatType === 'private') { 
-            // 显示绿点
-            subtitle.querySelector('.online-indicator').style.display = 'block';
-            // 恢复角色的在线状态
-            statusTextElement.textContent = chat.status || '在线';
-            // 移除动画Class
-            statusTextElement.classList.remove('typing-status');
-        }
+        // 【警报！】: 控制室的警报接收器被触发！
+        console.error("【警报！】: 控制室的警报接收器被触发！", error);
+        showToast(`AI回复失败: ${error.message}`); 
+    } finally {
+        // 【摄像头 G号 - 控制室】: 任务结束，执行清理工作
+        console.log("【摄像头 G号 - 控制室】: 任务结束，执行清理工作。");
+        isGenerating = false;
+        getReplyBtn.disabled = false;
+        hideTypingIndicator(); 
     }
-    // 确保旧的底部提示始终是隐藏的
-    typingIndicator.style.display = 'none';
 }
-}
-      // --- 新代码开始 ---
+// --- 新代码开始 ---
 // ===============================================================
 // START: 新增的中央指令处理器
 // ===============================================================
@@ -15929,46 +15705,68 @@ async function processStream(response, chat, apiType) {
     const decoder = new TextDecoder();
     let fullResponse = "";
     let accumulatedChunk = "";
-    let callActionReceived = false;
+
+    console.log("【流式处理 - 摄像头 1号】: 开始接收数据流...");
 
     for (;;) {
-        const {
-            done,
-            value
-        } = await reader.read();
-        if (done) break;
+        const { done, value } = await reader.read();
+        if (done) {
+            console.log("【流式处理 - 摄像头 2号】: 数据流已正常结束。");
+            break;
+        }
 
-        accumulatedChunk += decoder.decode(value, {
-            stream: true
-        });
-        // Process each complete SSE message (ending in \n\n)
-        const parts = accumulatedChunk.split("\n\n");
-        accumulatedChunk = parts.pop(); // Keep any incomplete part for the next chunk
+        accumulatedChunk += decoder.decode(value, { stream: true });
+        
+        // 【核心修复 A】: 使用更强大的正则表达式来分割数据块
+        // 它可以处理多种换行符 (\n\n, \r\n\r\n) 和不规范的数据块
+        const parts = accumulatedChunk.split(/\r?\n\r?\n/);
+        accumulatedChunk = parts.pop() || ""; // 保留最后一个不完整的部分
 
         for (const part of parts) {
-            if (part.startsWith("data: ")) {
-                const data = part.substring(6);
-                if (data.trim() === "[DONE]") continue;
+            if (part.trim() === "") continue; // 跳过空块
 
-                try {
-                    const jsonData = JSON.parse(data);
-                    let textChunk = "";
-                    if (apiType === "gemini") {
-                        // --- 修正开始：将 ?. 语法改为兼容性写法 ---
-                        textChunk = (jsonData.candidates && jsonData.candidates[0] && jsonData.candidates[0].content && jsonData.candidates[0].content.parts && jsonData.candidates[0].content.parts[0] && jsonData.candidates[0].content.parts[0].text) || "";
-                    } else { // Handles OpenAI, DeepSeek, Claude, NewAPI
-                        // --- 修正开始：将 ?. 语法改为兼容性写法 ---
-                        textChunk = (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) || "";
-                    }
-                    fullResponse += textChunk;
-                } catch (e) {
-                    console.error("Error parsing stream chunk:", e, "Chunk:", data);
+            // 【核心修复 B】: 兼容只以 "data:" 开头，没有空格的情况
+            const dataPrefix = "data: ";
+            const dataPrefixNoSpace = "data:";
+            let dataString = "";
+
+            if (part.startsWith(dataPrefix)) {
+                dataString = part.substring(dataPrefix.length);
+            } else if (part.startsWith(dataPrefixNoSpace)) {
+                dataString = part.substring(dataPrefixNoSpace.length);
+            } else {
+                continue; // 如果不是以 "data:" 开头，则忽略这一块
+            }
+
+            if (dataString.trim() === "[DONE]") {
+                console.log("【流式处理 - 摄像头 3号】: 收到 [DONE] 信号。");
+                continue;
+            }
+            
+            try {
+                const jsonData = JSON.parse(dataString);
+                let textChunk = "";
+
+                if (apiType === "gemini") {
+                    textChunk = (jsonData.candidates && jsonData.candidates[0] && jsonData.candidates[0].content && jsonData.candidates[0].content.parts && jsonData.candidates[0].content.parts[0] && jsonData.candidates[0].content.parts[0].text) || "";
+                } else { 
+                    textChunk = (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) || "";
                 }
+                
+                if (textChunk) {
+                    fullResponse += textChunk;
+                }
+            } catch (e) {
+                console.warn("【流式处理 - 警告】: 解析某个JSON数据块失败，已跳过。错误:", e, "数据块:", dataString);
             }
         }
     }
 
-    if (fullResponse) {
+    console.log("【流式处理 - 摄像头 4号】: 所有数据流接收并拼接完成。最终的完整回复是:", fullResponse);
+
+    // 【核心修复 C】: 在处理之前，最后检查一次 fullResponse 是否真的为空
+    if (fullResponse && fullResponse.trim() !== "") {
+
         // --- 新增：在这里调用中央指令处理器 ---
         fullResponse = await processAiCommands(fullResponse, chat);
         // --- 新增结束 ---
@@ -16362,17 +16160,11 @@ if (currentChatType === 'private') {
         }
         await saveData();
         renderChatList();
-        if (momentsWereAdded) {
-            if (typeof renderMoments === 'function') { try { await renderMoments(); } catch (e) {} }
-            else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
-        }
-        // if (currentChatType === 'private' && Math.random() < 0.85) {
-//     await generateBackgroundChat(chat);
-//     await saveData();
-// }
     } else {
-        // 如果AI的回复是空的，也要隐藏提示
-        hideTypingIndicator();
+        // 如果最终的回复内容是空的，我们也在这里处理
+        console.warn("【流式处理 - 警告】: 整个数据流处理完毕后，未能提取到任何有效文本内容。这是一个空回复。");
+        // 我们可以在这里抛出一个错误，让 getAiReply 的 catch 块来捕获并提示用户
+        throw new Error("API返回了空回复，可能已被内容安全策略拦截或网络问题。");
     }
     
     if (isCallRinging && !callActionReceived) {
@@ -16381,7 +16173,6 @@ if (currentChatType === 'private') {
         hideTypingIndicator();
     }
 }
-
         // --- Other Sub-systems Setup (Stickers, Voice, etc.) ---
         function setupImageRecognition() {
             imageRecognitionBtn.addEventListener('click', () => {
