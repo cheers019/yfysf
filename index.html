@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="apple-touch-icon" href="https://i.postimg.cc/nzP9sgxr/chan-125.png">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dexie/3.2.4/dexie.min.js"></script>
 
     <style>
         /* --- 全局与主题样式 --- */
@@ -15222,33 +15222,34 @@ ${worldBooksAfter || ''}
          \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这里是图片的文字描述（可选）"}]\``;
     }
 
-    prompt += `
+prompt += `
     ## ✨ 动态与评论互动模块 ✨
 
     ${momentPostingRule}
 
-    18. **浏览与评论动态 (主动能力)**
-       - 系统会在聊天上下文中，为你提供其他角色或我发布的、你尚未互动的动态列表，格式如下：
-         \`[system-moments: [{"id":"moment_id_1", "author":"作者昵称", "text":"动态内容", "comments":[{"id":"comment_id_1", "author":"评论者", "text":"评论内容"}]}, ...]]\`
-       - 你需要**主动检查**是否存在这个列表。如果存在，请根据你的人设，选择性地对其中的1-2条动态进行评论或点赞。
-       - **评论/点赞格式 (严格遵守)**:
-         \`[${character.realName}评论动态：{"momentId":"要评论的动态ID", "comment":"你的评论内容"}]\`
-         \`[${character.realName}点赞动态：{"momentId":"要点赞的动态ID"}]\`
+    18. **浏览新动态 (核心：自主判断)**
+       - 系统会在聊天上下文中，提供我发布的、你尚未互动的动态列表：
+         \`[system-moments: [{"id":"...", "author":"...", "text":"...", "imageDesc":"..."}, ...]]\`
+       - **【身份识别警报】**：在这个列表中，你是观众。**请只针对“author”是“${character.myName}”的动态进行互动**。如果列表中有其他人发的动态，请忽略，不要把别人的动态误认为是我发的。
+       - **互动逻辑**：
+         1. **后台动作 (必须)**: 根据人设，对我的动态生成 \`[${character.realName}评论动态：...]\` 或 \`[${character.realName}点赞动态：...]\` 指令。
+         2. **前台聊天 (可选/自主决定)**: 
+            - **如果**动态内容很有趣、值得深入讨论，或者你很想和我说话 -> **主动**在聊天窗口的普通消息中提起这个话题（例如：“看到你去吃火锅了，辣吗？”）。
+            - **如果**动态只是日常感叹（如“天气不错”），或者你觉得点个赞就够了 -> **不需要**在聊天窗口专门提起，只在后台互动即可。
+            - **拒绝机械化**：不要每次都强行把话题带回聊天窗口，要像真人一样自然。
 
-    19. **回应评论 (最高优先级任务)**
-       - 在处理任何其他任务之前，你必须**首先检查**聊天记录中是否存在以下两种格式的系统通知：
-         a) \`[system: {用户昵称} 评论了你的动态 ...]\`
-         b) \`[system: {用户昵称} 回复了你对动态...的评论: ...]\`
-         c) \`[system: {用户昵称} 在动态...的评论中提及了你: ...]\` (新增)
-       - **如果存在，你的本次回复中必须包含对该通知的回应**。
-       - **回应方式**:
-         - 如果是回应**新评论** (格式a)，你可以选择用**普通聊天消息**在聊天窗口中回应，或者直接在动态中**回复该评论**。
-         - 如果是回应**对你评论的回复** (格式b)，你**必须**在动态中**回复该用户的回复**。
-       - **在动态中回复评论的格式 (严格遵守)**:
-         \`[${character.realName}回复评论：{"momentId":"动态ID", "commentId":"被回复的评论ID", "reply":"你的回复内容"}]\`
-         这个指令不会在聊天中显示，但会在动态的评论区生成一条回复。
-       - **在聊天中回应的示例**: \`[${character.realName}的消息：我看到你给我的动态评论啦，很有趣！]\`
-       - 处理完通知后，你再继续生成其他正常的聊天回复。
+    19. **回应评论与通知 (最高优先级)**
+       - 检查是否存在以下系统通知：
+         a) \`[system: {用户} 评论了你的动态 ...]\`
+         b) \`[system: {用户} 回复了你对动态...的评论: ...]\`
+         c) \`[system: {用户} 在动态...的评论中提及了你: ...]\`
+       - **【身份识别警报 - 极其重要】**：在处理动态评论区时，**必须**先看清评论的发送者是谁。
+         - 如果是 **${character.myName} (我)** 说的：这是我对你说的话，请认真回应。
+         - 如果是 **其他角色 (如 ${character.myName} 以外的人)** 说的：**绝对不要**误以为是我说的！不要在聊天窗口问我“你为什么说...”，因为那根本不是我说的。除非你想和那个角色隔空对话，否则请忽略。
+       - **回应规则 (连续对话能力)**:
+         - 当我回复了你的评论（情况 b），代表我在动态区和你聊起来了。
+         - **首选操作**: 继续生成 \`[${character.realName}回复评论：{"momentId":"...", "commentId":"...", "reply":"..."}]\` 指令，**在动态评论区**陪我盖楼，直到话题结束。
+         - **次选操作 (转私聊)**: 只有当话题变得非常私密、或者你想展开长篇大论时，才在聊天窗口说：“这儿说不方便，我们在聊天里说吧...”然后把话题带回私聊。
 `;
 
     prompt += `
@@ -15805,20 +15806,40 @@ const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role 
 }
       // --- 新代码开始 ---
 // ===============================================================
-// START: 新增的中央指令处理器
+// ===============================================================
+// START: 修复版 V2 - 中央指令处理器 (解决连发消息识别错误)
 // ===============================================================
 async function processAiCommands(fullResponse, chat) {
     if (!fullResponse || !chat) return "";
 
     let momentsWereModified = false;
 
+    // 辅助函数：查找角色 (带保底机制)
+    const findAuthor = (rawName) => {
+        const cleanName = rawName.trim();
+        // 1. 尝试精确匹配真名或备注名
+        let author = db.characters.find(c => c.realName === cleanName || c.remarkName === cleanName);
+        
+        // 2. 保底机制：如果找不到，且当前聊天对象就是角色，且名字包含在乱码中，或者名字太长(说明正则抓错了)，则认为是当前聊天对象
+        if (!author && chat && chat.realName) {
+            // 如果提取出的名字包含当前角色的真名，或者提取出的名字长度超过20(明显是抓错了)，就默认是当前角色
+            if (cleanName.includes(chat.realName) || cleanName.length > 20) {
+                console.log(`[AI动态] 名字识别模糊 ("${cleanName}")，自动归属为当前角色: ${chat.remarkName}`);
+                author = chat;
+            }
+        }
+        return author;
+    };
+
     // 动态相关指令的处理器
     const commandProcessors = {
         '发布动态': {
-            regex: /\[(.*?)\s*发布动态\s*[:：]\s*({.*?})\]/g,
+            // 修改点：将 (.*?) 改为 ([^\]]+?)，禁止名字中包含 "]" 符号，防止跨消息匹配
+            regex: /\[([^\]]+?)\s*发布动态\s*[:：]\s*(\{[\s\S]*?\})\]/g,
             handler: async (match, authorRealName, jsonData) => {
                 try {
-                    const author = db.characters.find(c => c.realName === authorRealName);
+                    const author = findAuthor(authorRealName);
+                    
                     if (author) {
                         const postData = JSON.parse(jsonData);
                         const momentObj = {
@@ -15832,17 +15853,23 @@ async function processAiCommands(fullResponse, chat) {
                             comments: [],
                             likes: []
                         };
-                        await addMomentToDB(momentObj);
-                        momentsWereModified = true;
+                        
+                        if (window.AppDB_Moments && window.AppDB_Moments.moments) {
+                            await window.AppDB_Moments.moments.add(momentObj);
+                            console.log(`[AI动态] ${author.remarkName} 发布成功`);
+                            momentsWereModified = true;
+                        }
+                    } else {
+                        console.warn(`[AI动态] 无法识别角色名: "${authorRealName}"`);
                     }
-                } catch (e) { console.error("解析或执行发布动态指令失败:", e); }
+                } catch (e) { console.error("解析发布动态指令失败:", e); }
             }
         },
         '点赞动态': {
-            regex: /\[(.*?)\s*点赞动态\s*[:：]\s*({.*?})\]/g,
+            regex: /\[([^\]]+?)\s*点赞动态\s*[:：]\s*(\{[\s\S]*?\})\]/g,
             handler: async (match, authorRealName, jsonData) => {
                 try {
-                    const author = db.characters.find(c => c.realName === authorRealName);
+                    const author = findAuthor(authorRealName);
                     if (author) {
                         const likeData = JSON.parse(jsonData);
                         if (likeData.momentId) {
@@ -15850,14 +15877,14 @@ async function processAiCommands(fullResponse, chat) {
                             momentsWereModified = true;
                         }
                     }
-                } catch (e) { console.error("解析或执行点赞指令失败:", e); }
+                } catch (e) { console.error("解析点赞指令失败:", e); }
             }
         },
         '评论动态': {
-            regex: /\[(.*?)\s*评论动态\s*[:：]\s*({.*?})\]/g,
+            regex: /\[([^\]]+?)\s*评论动态\s*[:：]\s*(\{[\s\S]*?\})\]/g,
             handler: async (match, authorRealName, jsonData) => {
                 try {
-                    const author = db.characters.find(c => c.realName === authorRealName);
+                    const author = findAuthor(authorRealName);
                     if (author) {
                         const commentData = JSON.parse(jsonData);
                         if (commentData.momentId && commentData.comment) {
@@ -15865,14 +15892,14 @@ async function processAiCommands(fullResponse, chat) {
                             momentsWereModified = true;
                         }
                     }
-                } catch (e) { console.error("解析或执行评论指令失败:", e); }
+                } catch (e) { console.error("解析评论指令失败:", e); }
             }
         },
         '回复评论': {
-            regex: /\[(.*?)\s*回复评论\s*[:：]\s*({.*?})\]/g,
+            regex: /\[([^\]]+?)\s*回复评论\s*[:：]\s*(\{[\s\S]*?\})\]/g,
             handler: async (match, authorRealName, jsonData) => {
                 try {
-                    const author = db.characters.find(c => c.realName === authorRealName);
+                    const author = findAuthor(authorRealName);
                     if (author) {
                         const replyData = JSON.parse(jsonData);
                         if (replyData.momentId && replyData.commentId && replyData.reply) {
@@ -15880,7 +15907,7 @@ async function processAiCommands(fullResponse, chat) {
                             momentsWereModified = true;
                         }
                     }
-                } catch (e) { console.error("解析或执行回复评论指令失败:", e); }
+                } catch (e) { console.error("解析回复评论指令失败:", e); }
             }
         }
     };
@@ -15890,13 +15917,13 @@ async function processAiCommands(fullResponse, chat) {
         const { regex, handler } = commandProcessors[key];
         const matches = Array.from(fullResponse.matchAll(regex));
         for (const match of matches) {
-            await handler(...match); // 使用 await 确保异步操作完成
+            await handler(...match);
         }
-        fullResponse = fullResponse.replace(regex, ''); // 从文本中移除已处理的指令
+        fullResponse = fullResponse.replace(regex, ''); 
     }
     
     // 处理“新回忆”指令
-    const memoryRegex = /\[new-memory:({.*?})\]/g;
+    const memoryRegex = /\[new-memory:(\{[\s\S]*?\})\]/g;
     const memoryMatches = Array.from(fullResponse.matchAll(memoryRegex));
     for (const memoryMatch of memoryMatches) {
         try {
@@ -15907,7 +15934,7 @@ async function processAiCommands(fullResponse, chat) {
                 showToast(`[ ${character.remarkName} 悄悄写下了一段回忆... ]`);
             }
         } catch (e) {
-            console.error("解析或保存AI回忆失败:", e, memoryMatch[1]);
+            console.error("解析AI回忆失败:", e);
         }
     }
     fullResponse = fullResponse.replace(memoryRegex, '');
@@ -15918,10 +15945,10 @@ async function processAiCommands(fullResponse, chat) {
         else if (typeof window.renderMomentsSafe === 'function') { try { await window.renderMomentsSafe(); } catch (e) {} }
     }
 
-    return fullResponse.trim(); // 返回清理干净的、只剩下聊天内容的文本
+    return fullResponse.trim();
 }
 // ===============================================================
-// END: 新增的中央指令处理器
+// END: 修复版 V2 - 中央指令处理器
 // ===============================================================
 // --- 新代码结束 ---
 async function processStream(response, chat, apiType) {
@@ -23781,10 +23808,21 @@ async function triggerProactiveMessage(chatObject, type) {
         
         const cleanedResponse = await processAiCommands(aiResponseText, chatObject);
 
-        // ▼▼▼ 核心修复：使用正则表达式替换简单的 split('\n') ▼▼▼
-        // 这个正则表达式能准确匹配 "[...]" 或 "<div...>" 格式的每一条独立消息
+// ▼▼▼ 核心修复：使用正则表达式替换简单的 split('\n') ▼▼▼
         const messageRegex = /(\[[\s\S]*?\]|<div class="ai-theater"[\s\S]*?<\/div>)/g;
-        const replies = cleanedResponse.match(messageRegex) || [];
+        let replies = cleanedResponse.match(messageRegex) || [];
+
+        // --- 【线下模式修复补丁 START】 ---
+        // 如果是线下模式，且AI没有返回标准格式（replies为空），但确实有内容
+        // 我们就强制认为整段话都是AI的消息，并自动帮它加上格式
+        if (replies.length === 0 && chat.isOfflineMode && cleanedResponse.trim().length > 0) {
+            console.log("检测到线下模式AI未按格式回复，正在自动修正...");
+            // 自动包裹成标准格式：[角色名的消息：AI回复的内容]
+            const fixedContent = `[${chat.realName}的消息：${cleanedResponse.trim()}]`;
+            replies = [fixedContent];
+        }
+        // --- 【线下模式修复补丁 END】 ---
+        
         // ▲▲▲ 修复结束 ▲▲▲
 
         if (replies.length > 0) {
@@ -27917,32 +27955,55 @@ postForm.addEventListener('submit', async (ev) => {
       likeBtn.classList.add('liked');
     }
     likeBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg><span>${likes.length > 0 ? likes.length : '点赞'}</span>`;
-    likeBtn.addEventListener('click', async (event) => {
-      const btn = event.currentTarget;
-      const momentItem = btn.closest('.moment-item');
-      const currentLikes = m.likes || [];
-      const myIdx = currentLikes.indexOf(myId);
-      if (myIdx > -1) {
-        currentLikes.splice(myIdx, 1);
-        btn.classList.remove('liked');
-      } else {
-        currentLikes.push(myId);
-        btn.classList.add('liked');
-      }
-      m.likes = currentLikes;
-      await db.moments.put(m);
-      btn.querySelector('span').textContent = currentLikes.length > 0 ? currentLikes.length : '点赞';
-      const likesWrap = momentItem.querySelector('.moment-likes');
-      if (likesWrap) {
-        if (currentLikes.length > 0) {
-          const likeNames = currentLikes.map(likeId => window.getAuthorNameById(likeId)).join(', ');
-          likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likeNames}`;
-          likesWrap.classList.add('visible');
-        } else {
-          likesWrap.classList.remove('visible');
-        }
-      }
-    });
+likeBtn.addEventListener('click', async (event) => {
+                event.stopPropagation(); // 防止点击穿透
+                const btn = event.currentTarget;
+                const momentItem = btn.closest('.moment-item');
+                
+                // 1. 更新本地数据状态
+                const currentLikes = m.likes || [];
+                const myIdx = currentLikes.indexOf(myId);
+
+                if (myIdx > -1) {
+                    currentLikes.splice(myIdx, 1);
+                    btn.classList.remove('liked');
+                } else {
+                    currentLikes.push(myId);
+                    btn.classList.add('liked');
+                }
+                m.likes = currentLikes;
+
+                // --- 【核弹级修复】现场连接数据库进行保存 ---
+                try {
+                    // 不管全局变量在不在，直接新建一个连接，保证 put 方法存在
+                    const safeDb = new Dexie('AppDB_Moments');
+                    safeDb.version(1).stores({ moments: 'id,timestamp,commentedBy' });
+                    await safeDb.moments.put(m);
+                    // console.log('点赞状态已保存');
+                } catch (e) {
+                    console.error("数据库写入失败:", e);
+                    alert("点赞保存失败，请检查控制台");
+                }
+                // ------------------------------------------
+
+                // 2. 更新按钮文字
+                const span = btn.querySelector('span');
+                if (span) {
+                    span.textContent = currentLikes.length > 0 ? currentLikes.length : '点赞';
+                }
+
+                // 3. 更新点赞人名列表显示
+                const likesWrap = momentItem.querySelector('.moment-likes');
+                if (likesWrap) {
+                    if (currentLikes.length > 0) {
+                        const likeNames = currentLikes.map(likeId => window.getAuthorNameById(likeId)).join(', ');
+                        likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likeNames}`;
+                        likesWrap.classList.add('visible');
+                    } else {
+                        likesWrap.classList.remove('visible');
+                    }
+                }
+            });
     const commentBtn = document.createElement('button');
     commentBtn.className = 'moment-action-btn';
     commentBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg><span>评论</span>`;
@@ -28157,10 +28218,32 @@ async function saveMomentLike(momentId, authorId) {
 // --- end 新增 ---
 
 
-    // 6) 获取尚未被某角色评论的动态（limit）
+    // 6) 获取尚未被某角色评论的动态（limit） -> 修复版：只获取用户自己的动态
     async function getPendingMomentsForRole(roleId, limit = 5) {
-      const all = await db.moments.orderBy('timestamp').reverse().toArray();
-      const pending = all.filter(m => !(m.commentedBy || []).includes(roleId));
+      // 1. 获取“我”的ID
+      let myId = 'user'; // 默认ID
+      
+      // 尝试从全局函数获取最新ID
+      if (typeof window.loadProfileFromStorage === 'function') {
+          const profile = window.loadProfileFromStorage();
+          if (profile && profile.id) myId = profile.id;
+      } else {
+          // 保底方案：直接查localStorage
+          myId = localStorage.getItem('myTopId') || 'user';
+      }
+
+      // 2. 从数据库获取所有动态
+      let all = [];
+      if (db && db.moments) {
+          all = await db.moments.orderBy('timestamp').reverse().toArray();
+      }
+
+      // 3. 核心筛选逻辑
+      const pending = all.filter(m => 
+          m.authorId === myId && // 【关键修改】只筛选作者ID等于“我”的动态
+          !(m.commentedBy || []).includes(roleId) // 且该角色还没评论过
+      );
+
       return pending.slice(0, limit);
     }
 
@@ -28671,9 +28754,12 @@ function getAuthorProfile(authorId) {
             }
             likeBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg><span>${likes.length > 0 ? likes.length : '点赞'}</span>`;
             
-            likeBtn.addEventListener('click', async (event) => {
+likeBtn.addEventListener('click', async (event) => {
+                event.stopPropagation(); // 防止点击穿透
                 const btn = event.currentTarget;
                 const momentItem = btn.closest('.moment-item');
+                
+                // 1. 更新本地数据状态
                 const currentLikes = m.likes || [];
                 const myIdx = currentLikes.indexOf(myId);
 
@@ -28685,13 +28771,27 @@ function getAuthorProfile(authorId) {
                     btn.classList.add('liked');
                 }
                 m.likes = currentLikes;
-                await db.moments.put(m);
 
+                // --- 【核弹级修复】现场连接数据库进行保存 ---
+                try {
+                    // 不管全局变量在不在，直接新建一个连接，保证 put 方法存在
+                    const safeDb = new Dexie('AppDB_Moments');
+                    safeDb.version(1).stores({ moments: 'id,timestamp,commentedBy' });
+                    await safeDb.moments.put(m);
+                    // console.log('点赞状态已保存');
+                } catch (e) {
+                    console.error("数据库写入失败:", e);
+                    alert("点赞保存失败，请检查控制台");
+                }
+                // ------------------------------------------
+
+                // 2. 更新按钮文字
                 const span = btn.querySelector('span');
                 if (span) {
                     span.textContent = currentLikes.length > 0 ? currentLikes.length : '点赞';
                 }
 
+                // 3. 更新点赞人名列表显示
                 const likesWrap = momentItem.querySelector('.moment-likes');
                 if (likesWrap) {
                     if (currentLikes.length > 0) {
