@@ -13562,6 +13562,9 @@ function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
  * @returns {HTMLElement|null} - 创建好的消息包装器元素，或在不需渲染时返回null
  */
 // START: 最终修复版 createMessageBubbleElement (支持显示AI报告、文件和所有卡片)
+// START: 救急修复版 createMessageBubbleElement (包含文件解析、报告显示等所有功能)
+// START: 最终修复版 createMessageBubbleElement (含图片限宽与互动修复)
+// START: 终极万能修复版 createMessageBubbleElement (强制限制所有图片大小)
 function createMessageBubbleElement(message) {
 
     // --- 1. 处理系统消息、撤回消息等特殊类型 ---
@@ -13634,26 +13637,44 @@ function createMessageBubbleElement(message) {
     let finalContentHTML;
     let isRenderedByRule = false;
 
-    // 剥离消息外壳
     let rawText = content;
     const textMatchForRender = content.match(/\[(?:.+?)的消息：([\s\S]+?)\]/);
     if (textMatchForRender) {
         rawText = textMatchForRender[1].trim();
     }
     
-    // 优先尝试使用渲染器规则
     const renderResult = applyAdvancedRenderingRules(rawText, currentChatId, isSent ? 'user' : 'ai');
+
+    // ▼▼▼ 核心修复：定义万能样式，针对所有气泡内的图片 ▼▼▼
+    const universalStyle = `<style>
+        /* 针对所有消息气泡内的图片，无论新旧 */
+        .message-bubble img, 
+        .ai-generated-theater img, 
+        .ai-theater img { 
+            max-width: 100% !important; 
+            height: auto !important; 
+            border-radius: 8px; 
+            display: block; 
+            margin: 5px 0; 
+        }
+        /* 针对容器，防止文字撑开 */
+        .ai-generated-theater, .ai-theater { 
+            width: 100%; 
+            overflow-x: hidden; 
+            word-wrap: break-word;
+            pointer-events: auto !important;
+        }
+    </style>`;
+    // ▲▲▲ 修复结束 ▲▲▲
 
     if (renderResult.isRendered) {
         finalContentHTML = renderResult.html;
         isRenderedByRule = true;
     } 
-    // ▼▼▼ 修复核心：直接检测 HTML 小剧场（报告）代码 ▼▼▼
     else if (content.includes('<div class="ai-theater"') || content.includes('class="ai-generated-theater"')) {
-        finalContentHTML = content; // 直接放行 HTML，不进行转义
-        isRenderedByRule = true;    // 标记为特殊渲染，不加气泡外壳
+        finalContentHTML = content; 
+        isRenderedByRule = true;    
     }
-    // ▲▲▲ 修复结束 ▲▲▲
     else {
         // 正则匹配准备
         const aiQuoteRegex = /\[(?:.*?)引用了“(?:.*?:)?\s?([\s\S]+?)”的消息?并回复：([\s\S]+?)\]/;
@@ -13672,10 +13693,7 @@ function createMessageBubbleElement(message) {
         const groupGiftRegex = /\[(.*?)\s*向\s*(.*?)\s*送来了礼物：([\s\S]+?)\]/; 
         const imageRecogRegex = /\[.*?发来了一张图片：\]/;
         const textRegex = /\[(?:.+?)的消息：([\s\S]+?)\]/;
-        
-        // ▼▼▼ 修复文件匹配正则：使用 [\s\S] 支持多行内容 ▼▼▼
         const fileRegex = /\[(?:.+?)发送了文件：(\{[\s\S]*?\})\]/;
-        // ▲▲▲ 修复结束 ▲▲▲
 
         const aiQuoteMatch = content.match(aiQuoteRegex);
         const musicMatch = content.match(musicShareRegex);
@@ -13787,26 +13805,31 @@ function createMessageBubbleElement(message) {
             `;
         } else if (message.fileData && message.fileData.name) {
             const fileSize = formatFileSize(new Blob([message.fileData.content]).size);
-            finalContentHTML = `<div class="file-card" data-file-name="${escapeHTML(message.fileData.name)}" data-file-content="${escapeHTML(message.fileData.content)}"><img src="https://img.icons8.com/color/96/file.png" alt="file icon" class="file-card-icon"><div class="file-card-info"><p class="file-card-name">${escapeHTML(message.fileData.name)}</p><p class="file-card-size">${fileSize}</p></div></div>`;
+            finalContentHTML = `<div class="file-card" data-file-name="${escapeHTML(message.fileData.name)}" data-file-content="${escapeHTML(message.fileData.content)}"><img src="https://i.postimg.cc/vms1Vd9X/1040g2sg31hh9ub1v3oeg5pbsckvn39vt3mbflao.png" alt="file icon" class="file-card-icon"><div class="file-card-info"><p class="file-card-name">${escapeHTML(message.fileData.name)}</p><p class="file-card-size">${fileSize}</p></div></div>`;
         } else if (fileMatch) {
-            // ▼▼▼ 修复：增强的文件解析逻辑 ▼▼▼
+            let fileName = '未命名文件.txt';
+            let fileContent = '';
+            let parseSuccess = false;
+            const rawJson = fileMatch[1];
             try {
-                // 尝试修复常见的 JSON 格式问题（如中文引号，单引号，无引号键名）
-                let jsonStr = fileMatch[1]
-                    .replace(/[\u201C\u201D]/g, '"')
-                    .replace(/'/g, '"')
-                    .replace(/\n/g, '\\n'); // 转义换行符
-                const fileData = JSON.parse(jsonStr);
-                
-                const fileName = fileData.name || '未命名文件.txt';
-                const fileContent = fileData.content || '[文件内容为空]';
-                const fileSize = formatFileSize(new Blob([fileContent]).size);
-                finalContentHTML = `<div class="file-card" data-file-name="${escapeHTML(fileName)}" data-file-content="${escapeHTML(fileContent)}"><img src="https://img.icons8.com/color/96/file.png" alt="file icon" class="file-card-icon"><div class="file-card-info"><p class="file-card-name">${escapeHTML(fileName)}</p><p class="file-card-size">${fileSize}</p></div></div>`;
-            } catch (e) {
-                console.warn("解析AI文件失败", e);
-                finalContentHTML = `<div class="system-notification-bubble">AI尝试发送文件，但格式有误</div>`;
+                let cleanJson = rawJson.replace(/[\u201C\u201D]/g, '"').replace(/'/g, '"').replace(/(?:\r\n|\r|\n)/g, '\\n'); 
+                const fileData = JSON.parse(cleanJson);
+                if (fileData) { fileName = fileData.name || fileName; fileContent = fileData.content || ''; parseSuccess = true; }
+            } catch (e) {}
+            if (!parseSuccess) {
+                try {
+                    const nameMatch = rawJson.match(/name["']?\s*[:：]\s*["']([^"']+)["']/i);
+                    if (nameMatch) fileName = nameMatch[1];
+                    const contentMatch = rawJson.match(/content["']?\s*[:：]\s*["']([\s\S]*?)["']\s*(?:,|}|\])/i);
+                    if (contentMatch) { fileContent = contentMatch[1]; parseSuccess = true; }
+                } catch (e2) {}
             }
-            // ▲▲▲ 修复结束 ▲▲▲
+            if (parseSuccess || fileContent.length > 0) {
+                const fileSize = formatFileSize(new Blob([fileContent]).size);
+                finalContentHTML = `<div class="file-card" data-file-name="${escapeHTML(fileName)}" data-file-content="${escapeHTML(fileContent)}"><img src="https://i.postimg.cc/vms1Vd9X/1040g2sg31hh9ub1v3oeg5pbsckvn39vt3mbflao.png" alt="file icon" class="file-card-icon"><div class="file-card-info"><p class="file-card-name">${escapeHTML(fileName)}</p><p class="file-card-size">${fileSize}</p></div></div>`;
+            } else {
+                finalContentHTML = `<div class="system-notification-bubble">文件生成格式有误，无法显示</div>`;
+            }
         } else if (message.locationData || locationMatch) {
             let mainLoc, detailLoc;
             if (message.locationData) {
@@ -13820,7 +13843,6 @@ function createMessageBubbleElement(message) {
         } else if ((isSent && sentStickerMatch) || (!isSent && receivedStickerMatch)) {
             let stickerSrc = null;
             let stickerName = '';
-
             if (isSent) {
                 stickerSrc = stickerData; 
                 const match = content.match(/\[.*?的表情包：(.*?)\]/);
@@ -13828,14 +13850,12 @@ function createMessageBubbleElement(message) {
             } else { 
                 stickerName = receivedStickerMatch[1].trim();
                 const sticker = db.myStickers.find(s => s.name === stickerName);
-
                 if (sticker) {
                     stickerSrc = sticker.data;
                 } else {
                     const urlMatch = stickerName.match(/https?:\/\/[^\s\])]+/);
-                    if (urlMatch) {
-                        stickerSrc = urlMatch[0];
-                    } else {
+                    if (urlMatch) stickerSrc = urlMatch[0];
+                    else {
                         const pathExtractionRegex = /[a-zA-Z0-9]+\/.*$/;
                         const extractedPathMatch = stickerName.match(pathExtractionRegex);
                         const finalPath = extractedPathMatch ? extractedPathMatch[0] : stickerName;
@@ -13843,7 +13863,6 @@ function createMessageBubbleElement(message) {
                     }
                 }
             }
-
             if (stickerSrc) {
                 finalContentHTML = `<div class="image-bubble"><img src="${stickerSrc}" alt="表情包: ${escapeHTML(stickerName)}"></div>`;
             } else {
@@ -13867,9 +13886,7 @@ function createMessageBubbleElement(message) {
             const descriptionDiv = document.createElement('div');
             descriptionDiv.className = 'gift-card-description';
             descriptionDiv.textContent = description;
-            // 注意：这里我们返回的是字符串HTML，所以无法直接append DOM元素，需要拼接字符串
-            // 但为了保持结构，我们暂时只返回card本身，description的显示逻辑在下方统一处理
-        } else if (voiceMatch) {
+        } else if (voiceMatch) { 
             const duration = calculateVoiceDuration(voiceMatch[1].trim());
             finalContentHTML = `<div class="voice-bubble" style="background-color: ${bubbleTheme.bg}; color: ${bubbleTheme.text};"><svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg><span class="duration">${duration}"</span></div>`;
         } else if (privateSentTransferMatch || privateReceivedTransferMatch || groupTransferMatch) {
@@ -13907,7 +13924,6 @@ function createMessageBubbleElement(message) {
             const imageData = (message.parts && message.parts.find(p => p.type === 'image')) ? message.parts.find(p => p.type === 'image').data : content;
             finalContentHTML = `<div class="image-bubble"><img src="${imageData}" alt="图片消息"></div>`;
         } else if (message.parts && message.parts[0] && message.parts[0].type === 'html') {
-            // 这里的判断可能被前面的 .includes('<div') 覆盖，但保留作为后备
             finalContentHTML = `<div class="ai-generated-theater">${message.parts[0].text}</div>`;
         } else {
             let innerText = textMatch ? textMatch[1].trim() : content.trim();
@@ -13919,7 +13935,13 @@ function createMessageBubbleElement(message) {
         }
     }
 
-    // --- 4. 构建最终的DOM元素 ---
+    // --- 5. 最终注入万能样式 (修复所有图片大小) ---
+    // 不论是 HTML 还是普通文本，只要产生了 HTML 内容，就加上这层保险
+    if (finalContentHTML) {
+        finalContentHTML = universalStyle + finalContentHTML;
+    }
+
+    // --- 4. 构建最终的DOM元素 (继续原来的逻辑) ---
     const wrapper = document.createElement('div');
     wrapper.dataset.id = id;
     wrapper.className = `message-wrapper ${isSent ? 'sent' : 'received'}`;
@@ -13980,7 +14002,6 @@ function createMessageBubbleElement(message) {
             bubbleRow.appendChild(infoDiv);
             bubbleRow.appendChild(specialBubble);
             
-            // 礼物描述单独处理
             if ((privateGiftMatch || groupGiftMatch) && specialBubble.classList.contains('gift-card')) {
                  const description = groupGiftMatch ? groupGiftMatch[3].trim() : (privateGiftMatch ? privateGiftMatch[1].trim() : '');
                  const descriptionDiv = document.createElement('div');
@@ -14031,7 +14052,6 @@ function createMessageBubbleElement(message) {
     return wrapper;
 }
 
-// END: 最终版 createMessageBubbleElement 函数
       // START: 最终修正版 addMessageBubble 函数 (替换旧版本)
 // START: 最终修正版 addMessageBubble 函数 (已修复多角色状态更新串台问题)
 async function addMessageBubble(message) {
@@ -14969,6 +14989,8 @@ function setupLocationSystem() {
     });
 }
 // --- NEW: File Display System Setup ---
+// START: 修复版 setupFileDisplaySystem (自动修复换行和格式)
+// START: 纯净修复版 setupFileDisplaySystem (完美兼容代码和小说)
 function setupFileDisplaySystem() {
     const displayModal = document.getElementById('display-file-modal');
     const fileNameEl = document.getElementById('display-file-name');
@@ -14980,11 +15002,26 @@ function setupFileDisplaySystem() {
         const fileCard = e.target.closest('.file-card');
         if (fileCard) {
             const fileName = fileCard.dataset.fileName;
-            const fileContent = fileCard.dataset.fileContent;
+            let content = fileCard.dataset.fileContent;
 
-            if (fileName && typeof fileContent !== 'undefined') {
+            if (fileName && typeof content !== 'undefined') {
+                // ▼▼▼ 纯净还原逻辑 ▼▼▼
+                
+                // 1. 修复 JSON 转义字符 (这是必须的“翻译”工作)
+                content = content
+                    .replace(/\\n/g, '\n')  // 把 \n 变成真换行
+                    .replace(/\\r/g, '')    // 去掉回车符
+                    .replace(/\\"/g, '"')   // 把 \" 还原成 " (修复HTML属性)
+                    .replace(/\\'/g, "'");  // 把 \' 还原成 '
+
+                // 【注意】我删除了去标题(#)和去加粗(**)的代码
+                // 这样能确保程序员写的代码注释(#)和数学运算(**)不被误删
+                // 小说里的符号也会原样保留，原汁原味。
+
+                // ▲▲▲ 逻辑结束 ▲▲▲
+
                 fileNameEl.textContent = fileName;
-                fileContentEl.textContent = fileContent;
+                fileContentEl.textContent = content;
                 displayModal.classList.add('visible');
             }
         }
@@ -15897,6 +15934,7 @@ async function getAiReply() {
 // ===============================================================
 // START: 修复版 V5 - 修复数据库查询报错的指令处理器
 // ===============================================================
+// START: 修复版 processAiCommands (增加 HTML 格式规整逻辑)
 async function processAiCommands(fullResponse, chat) {
     if (!fullResponse || !chat) return "";
 
@@ -15928,23 +15966,14 @@ async function processAiCommands(fullResponse, chat) {
         }
     };
 
-    // --- 核心修复：修改了查找动态的逻辑，避免 SchemaError 报错 ---
     const findLatestMomentIdAndCommentId = async (authorId) => {
         if (!window.AppDB_Moments) return { mId: null, cId: null };
-        
         try {
-            // [修复点] 不再使用 .where('authorId')，而是获取全部后手动过滤
-            // 这样即使数据库没有索引也不会报错
             const allMoments = await window.AppDB_Moments.moments.toArray();
             const authorMoments = allMoments.filter(m => m.authorId === authorId);
-
             if (authorMoments.length === 0) return { mId: null, cId: null };
-            
-            // 按时间倒序，取最新一条
             authorMoments.sort((a, b) => b.timestamp - a.timestamp);
             const latestMoment = authorMoments[0];
-            
-            // 查找该动态下，用户（非AI）发布的最新一条评论
             let latestCommentId = null;
             if (latestMoment.comments && latestMoment.comments.length > 0) {
                 const userComments = latestMoment.comments.filter(c => c.roleId !== authorId); 
@@ -15953,12 +15982,8 @@ async function processAiCommands(fullResponse, chat) {
                 }
             }
             return { mId: latestMoment.id, cId: latestCommentId };
-        } catch (err) {
-            console.error("[智能填补内部错误]", err);
-            return { mId: null, cId: null };
-        }
+        } catch (err) { return { mId: null, cId: null }; }
     };
-    // --- 修复结束 ---
 
     const commandProcessors = {
         '发布动态': {
@@ -15997,7 +16022,6 @@ async function processAiCommands(fullResponse, chat) {
                              const { mId } = await findLatestMomentIdAndCommentId(author.id);
                              if (mId) likeData.momentId = mId;
                         }
-
                         if (likeData && likeData.momentId) {
                             await saveMomentLike(likeData.momentId, author.id);
                             momentsWereModified = true;
@@ -16028,33 +16052,23 @@ async function processAiCommands(fullResponse, chat) {
         '回复评论': {
             regex: /\[([^\]]+?)\s*回复评论\s*[:：]\s*(\{[\s\S]*?\})\]/g,
             handler: async (match, authorRealName, jsonData) => {
-                console.log(`[摄像头 5号] 捕捉到回复指令！`);
                 try {
                     const author = findAuthor(authorRealName);
                     if (author) {
                         const replyData = safeParse(jsonData);
-                        
-                        // --- 智能纠错逻辑 ---
                         if (replyData && (replyData.momentId === '...' || !replyData.momentId || replyData.commentId === '...' || !replyData.commentId)) {
-                             console.log("[摄像头 5号] ID无效，开始执行无报错版智能填补...");
                              const { mId, cId } = await findLatestMomentIdAndCommentId(author.id);
-                             
                              if (mId && cId) {
-                                 console.log(`[摄像头 5号] 填补成功！ID: ${mId}, ${cId}`);
                                  replyData.momentId = mId;
                                  replyData.commentId = cId;
-                             } else {
-                                 console.warn("[摄像头 5号] 填补失败：没找到对应的动态或评论。");
                              }
                         }
-
                         if (replyData && replyData.momentId && replyData.commentId && replyData.reply) {
                             await saveAiReplyToComment(replyData.momentId, replyData.commentId, replyData.reply, author.id);
-                            console.log(`[摄像头 5号] 写入完成！`);
                             momentsWereModified = true;
                         }
                     }
-                } catch (e) { console.error("[摄像头 5号] 处理出错:", e); }
+                } catch (e) {}
             }
         }
     };
@@ -16083,6 +16097,17 @@ async function processAiCommands(fullResponse, chat) {
         if (typeof renderMoments === 'function') try { await renderMoments(); } catch (e) {} 
         else if (typeof window.renderMomentsSafe === 'function') try { await window.renderMomentsSafe(); } catch (e) {} 
     }
+
+    // ▼▼▼ 核心修复：规整 HTML 格式，防止被切分 ▼▼▼
+    if (fullResponse.includes('ai-theater')) {
+        // 1. 尝试自动闭合标签 (如果 AI 忘了写 </div>)
+        if ((fullResponse.match(/<div/g) || []).length > (fullResponse.match(/<\/div>/g) || []).length) {
+            fullResponse += '</div>';
+        }
+        // 2. 标准化标签格式，确保正则表达式能匹配
+        fullResponse = fullResponse.replace(/<div\s+class=["']ai-theater["']\s*(.*?)>/g, '<div class="ai-theater" $1>');
+    }
+    // ▲▲▲ 修复结束 ▲▲▲
 
     return fullResponse.trim();
 }
