@@ -13561,10 +13561,7 @@ function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
  * @param {object} message - 消息对象
  * @returns {HTMLElement|null} - 创建好的消息包装器元素，或在不需渲染时返回null
  */
-// START: 最终修复版 createMessageBubbleElement (支持显示AI报告、文件和所有卡片)
-// START: 救急修复版 createMessageBubbleElement (包含文件解析、报告显示等所有功能)
-// START: 最终修复版 createMessageBubbleElement (含图片限宽与互动修复)
-// START: 终极万能修复版 createMessageBubbleElement (强制限制所有图片大小)
+// START: 完美修复版 createMessageBubbleElement (表情包恢复原样，报告图片受限)
 function createMessageBubbleElement(message) {
 
     // --- 1. 处理系统消息、撤回消息等特殊类型 ---
@@ -13645,10 +13642,8 @@ function createMessageBubbleElement(message) {
     
     const renderResult = applyAdvancedRenderingRules(rawText, currentChatId, isSent ? 'user' : 'ai');
 
-    // ▼▼▼ 核心修复：定义万能样式，针对所有气泡内的图片 ▼▼▼
-    const universalStyle = `<style>
-        /* 针对所有消息气泡内的图片，无论新旧 */
-        .message-bubble img, 
+    // ▼▼▼ 样式定义：只针对 HTML 报告/小剧场 ▼▼▼
+    const reportStyle = `<style>
         .ai-generated-theater img, 
         .ai-theater img { 
             max-width: 100% !important; 
@@ -13657,7 +13652,6 @@ function createMessageBubbleElement(message) {
             display: block; 
             margin: 5px 0; 
         }
-        /* 针对容器，防止文字撑开 */
         .ai-generated-theater, .ai-theater { 
             width: 100%; 
             overflow-x: hidden; 
@@ -13665,16 +13659,18 @@ function createMessageBubbleElement(message) {
             pointer-events: auto !important;
         }
     </style>`;
-    // ▲▲▲ 修复结束 ▲▲▲
 
     if (renderResult.isRendered) {
-        finalContentHTML = renderResult.html;
+        // 是规则渲染的：加上样式
+        finalContentHTML = reportStyle + renderResult.html;
         isRenderedByRule = true;
     } 
     else if (content.includes('<div class="ai-theater"') || content.includes('class="ai-generated-theater"')) {
-        finalContentHTML = content; 
+        // 是 HTML 小剧场：加上样式
+        finalContentHTML = reportStyle + content; 
         isRenderedByRule = true;    
     }
+    // ▲▲▲ 样式逻辑结束：普通消息不加这段代码，防止干扰判断 ▲▲▲
     else {
         // 正则匹配准备
         const aiQuoteRegex = /\[(?:.*?)引用了“(?:.*?:)?\s?([\s\S]+?)”的消息?并回复：([\s\S]+?)\]/;
@@ -13843,6 +13839,7 @@ function createMessageBubbleElement(message) {
         } else if ((isSent && sentStickerMatch) || (!isSent && receivedStickerMatch)) {
             let stickerSrc = null;
             let stickerName = '';
+
             if (isSent) {
                 stickerSrc = stickerData; 
                 const match = content.match(/\[.*?的表情包：(.*?)\]/);
@@ -13850,12 +13847,14 @@ function createMessageBubbleElement(message) {
             } else { 
                 stickerName = receivedStickerMatch[1].trim();
                 const sticker = db.myStickers.find(s => s.name === stickerName);
+
                 if (sticker) {
                     stickerSrc = sticker.data;
                 } else {
                     const urlMatch = stickerName.match(/https?:\/\/[^\s\])]+/);
-                    if (urlMatch) stickerSrc = urlMatch[0];
-                    else {
+                    if (urlMatch) {
+                        stickerSrc = urlMatch[0];
+                    } else {
                         const pathExtractionRegex = /[a-zA-Z0-9]+\/.*$/;
                         const extractedPathMatch = stickerName.match(pathExtractionRegex);
                         const finalPath = extractedPathMatch ? extractedPathMatch[0] : stickerName;
@@ -13863,6 +13862,7 @@ function createMessageBubbleElement(message) {
                     }
                 }
             }
+
             if (stickerSrc) {
                 finalContentHTML = `<div class="image-bubble"><img src="${stickerSrc}" alt="表情包: ${escapeHTML(stickerName)}"></div>`;
             } else {
@@ -13886,9 +13886,19 @@ function createMessageBubbleElement(message) {
             const descriptionDiv = document.createElement('div');
             descriptionDiv.className = 'gift-card-description';
             descriptionDiv.textContent = description;
+            wrapper.appendChild(descriptionDiv);
         } else if (voiceMatch) { 
             const duration = calculateVoiceDuration(voiceMatch[1].trim());
             finalContentHTML = `<div class="voice-bubble" style="background-color: ${bubbleTheme.bg}; color: ${bubbleTheme.text};"><svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg><span class="duration">${duration}"</span></div>`;
+            
+            bubbleRow.appendChild(infoDiv);
+            bubbleRow.appendChild(voiceBubble);
+            
+            const transcriptDiv = document.createElement('div');
+            transcriptDiv.className = 'voice-transcript';
+            transcriptDiv.textContent = voiceMatch[1].trim();
+            wrapper.appendChild(transcriptDiv);
+
         } else if (privateSentTransferMatch || privateReceivedTransferMatch || groupTransferMatch) {
             let amount, remarkText, titleText, statusText, cardClass;
             if (groupTransferMatch) {
@@ -13924,7 +13934,10 @@ function createMessageBubbleElement(message) {
             const imageData = (message.parts && message.parts.find(p => p.type === 'image')) ? message.parts.find(p => p.type === 'image').data : content;
             finalContentHTML = `<div class="image-bubble"><img src="${imageData}" alt="图片消息"></div>`;
         } else if (message.parts && message.parts[0] && message.parts[0].type === 'html') {
+             // 后备逻辑：如果前面没被 detected，这里再次捕获
             finalContentHTML = `<div class="ai-generated-theater">${message.parts[0].text}</div>`;
+             // 针对这里的后备逻辑，我们也加上限制样式（如果上面 isRenderedByRule 漏掉了）
+             finalContentHTML = `<style>.ai-generated-theater img { max-width: 100% !important; height: auto !important; border-radius: 8px; margin: 5px 0; }</style>` + finalContentHTML;
         } else {
             let innerText = textMatch ? textMatch[1].trim() : content.trim();
             if (urlRegex.test(innerText)) {
@@ -13934,14 +13947,8 @@ function createMessageBubbleElement(message) {
             }
         }
     }
-
-    // --- 5. 最终注入万能样式 (修复所有图片大小) ---
-    // 不论是 HTML 还是普通文本，只要产生了 HTML 内容，就加上这层保险
-    if (finalContentHTML) {
-        finalContentHTML = universalStyle + finalContentHTML;
-    }
-
-    // --- 4. 构建最终的DOM元素 (继续原来的逻辑) ---
+    
+    // --- 4. 构建最终的DOM元素 ---
     const wrapper = document.createElement('div');
     wrapper.dataset.id = id;
     wrapper.className = `message-wrapper ${isSent ? 'sent' : 'received'}`;
@@ -13983,52 +13990,27 @@ function createMessageBubbleElement(message) {
     infoDiv.prepend(avatarContainer);
 
     if (isRenderedByRule) {
+        // 如果是 HTML 报告，直接显示
         const theaterNode = document.createElement('div');
         theaterNode.className = 'ai-generated-theater';
         theaterNode.innerHTML = finalContentHTML;
         bubbleRow.appendChild(infoDiv);
         bubbleRow.appendChild(theaterNode);
     } else {
+        // 如果是普通消息/表情包
         const tempContainer = document.createElement('div');
         tempContainer.innerHTML = finalContentHTML;
         const specialBubble = tempContainer.firstElementChild;
         
+        // 关键：在这里检查 specialBubble 是否存在，且是不是特殊卡片
+        // 因为 finalContentHTML 里面没有 style 标签干扰了，所以 firstElementChild 能正确拿到 div
         const specialClasses = ['image-bubble', 'pv-card', 'transfer-card', 'gift-card', 'file-card', 'location-card', 'music-card'];
-        const voiceMatch = content.match(/\[(?:.+?)的语音：([\s\S]+?)\]/);
-        const privateGiftMatch = content.match(/\[(?:.+?)送来的礼物：([\s\S]+?)\]/);
-        const groupGiftMatch = content.match(/\[(.*?)\s*向\s*(.*?)\s*送来了礼物：([\s\S]+?)\]/);
         
         if (specialBubble && specialClasses.some(cls => specialBubble.classList.contains(cls))) {
             bubbleRow.appendChild(infoDiv);
-            bubbleRow.appendChild(specialBubble);
-            
-            if ((privateGiftMatch || groupGiftMatch) && specialBubble.classList.contains('gift-card')) {
-                 const description = groupGiftMatch ? groupGiftMatch[3].trim() : (privateGiftMatch ? privateGiftMatch[1].trim() : '');
-                 const descriptionDiv = document.createElement('div');
-                 descriptionDiv.className = 'gift-card-description';
-                 descriptionDiv.textContent = description;
-                 wrapper.appendChild(descriptionDiv);
-            }
-
-        } else if (voiceMatch) { 
-            const voiceBubble = document.createElement('div');
-            voiceBubble.className = 'voice-bubble';
-            if (!chat.useCustomBubbleCss) {
-                voiceBubble.style.backgroundColor = bubbleTheme.bg;
-                voiceBubble.style.color = bubbleTheme.text;
-            }
-            const duration = calculateVoiceDuration(voiceMatch[1].trim());
-            voiceBubble.innerHTML = `<svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg><span class="duration">${duration}"</span>`;
-            
-            bubbleRow.appendChild(infoDiv);
-            bubbleRow.appendChild(voiceBubble);
-            
-            const transcriptDiv = document.createElement('div');
-            transcriptDiv.className = 'voice-transcript';
-            transcriptDiv.textContent = voiceMatch[1].trim();
-            wrapper.appendChild(transcriptDiv);
-
+            bubbleRow.appendChild(specialBubble); // 直接添加卡片/图片，不包在 message-bubble 里
         } else {
+            // 普通文字消息
             const bubbleElement = document.createElement('div');
             bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
             bubbleElement.innerHTML = finalContentHTML;
@@ -15358,21 +15340,20 @@ ${worldBooksAfter || ''}
     prompt += `14. 你的每次回复可以生成1到8条消息。根据上下文，保持人设。这些消息应以普通文本消息为主，可以偶尔、选择性地穿插一条特殊消息。\n`;
     prompt += `16. 不要主动结束对话，保持你的人设。\n`;
 
+    // ▼▼▼ 核心修复：在这里修改了动态发布规则，强制中文 ▼▼▼
     let momentPostingRule;
     if (autoPostMoment) {
         momentPostingRule = `17. **发布动态 (高概率触发)**
        - 在你的每次回复中，你有 **50%的概率** 需要根据我们的对话上下文和你的角色人设，额外发布一条动态。
-       - 这条动态应该像是你真实生活中的所思所想，是对我们聊天内容的一种延伸或感悟。
-       - **发布格式 (严格遵守)**: 当你决定发布时，请仅生成一条特殊指令消息（该指令不会在聊天中显示）。格式为：
-         \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这里是图片的文字描述（可选）"}]\`
+       - **发布格式 (严格遵守)**: \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这是图片的中文描述（必须使用中文，例如：一只白猫在睡觉）"}]\`
        - **重要**: 这条发布动态的指令消息必须与你的其他聊天消息（例如 \`[${character.realName}的消息：...]\`）一起生成，但它本身不会在聊天窗口显示。`;
     } else {
         momentPostingRule = `17. **发布动态 (可选能力)**
        - 你可以在“动态”页面发布内容，分享你的想法、感受或故事片段。
        - **发布时机**: 这是一个**特殊行为**，不应频繁使用。请在对话发生转折、角色产生强烈情绪、或重要互动后，根据你的人设**自主决定**是否发布动态。
-       - **发布格式 (严格遵守)**: 当你决定发布时，请仅生成一条特殊指令消息（该指令不会在聊天中显示）。格式为：
-         \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这里是图片的文字描述（可选）"}]\``;
+       - **发布格式 (严格遵守)**: \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这是图片的中文描述（必须使用中文，例如：一只白猫在睡觉）"}]\``;
     }
+    // ▲▲▲ 修改结束 ▲▲▲
 
     prompt += `
     ## ✨ 动态与评论互动模块 (重要升级) ✨
@@ -15935,6 +15916,7 @@ async function getAiReply() {
 // START: 修复版 V5 - 修复数据库查询报错的指令处理器
 // ===============================================================
 // START: 修复版 processAiCommands (增加 HTML 格式规整逻辑)
+// START: 频率定制版 processAiCommands (50句门槛，70%概率)
 async function processAiCommands(fullResponse, chat) {
     if (!fullResponse || !chat) return "";
 
@@ -16097,17 +16079,26 @@ async function processAiCommands(fullResponse, chat) {
         if (typeof renderMoments === 'function') try { await renderMoments(); } catch (e) {} 
         else if (typeof window.renderMomentsSafe === 'function') try { await window.renderMomentsSafe(); } catch (e) {} 
     }
+    
+    // ▼▼▼ 核心调整：50句门槛，70%概率 ▼▼▼
+    if (currentChatType === 'private') {
+        const character = chat;
+        character.messageCountSinceLastDiary = (character.messageCountSinceLastDiary || 0) + 1;
+        // 门槛 50 句，概率 70% (< 0.7)
+        if (character.messageCountSinceLastDiary >= 50 && Math.random() < 0.7) {
+            console.log(`[自动触发] 检测到角色 "${character.remarkName}" 满足日记条件(>50句)，正在尝试生成...`);
+            generateDiaryEntry(character.id); 
+        }
+    }
+    // ▲▲▲ 调整结束 ▲▲▲
 
-    // ▼▼▼ 核心修复：规整 HTML 格式，防止被切分 ▼▼▼
+    // 规整 HTML 格式
     if (fullResponse.includes('ai-theater')) {
-        // 1. 尝试自动闭合标签 (如果 AI 忘了写 </div>)
         if ((fullResponse.match(/<div/g) || []).length > (fullResponse.match(/<\/div>/g) || []).length) {
             fullResponse += '</div>';
         }
-        // 2. 标准化标签格式，确保正则表达式能匹配
         fullResponse = fullResponse.replace(/<div\s+class=["']ai-theater["']\s*(.*?)>/g, '<div class="ai-theater" $1>');
     }
-    // ▲▲▲ 修复结束 ▲▲▲
 
     return fullResponse.trim();
 }
@@ -17951,6 +17942,7 @@ function setupStickerSystem() {
         // --- DIARY SYSTEM FUNCTIONS ---
 
 // 用于生成日记的 AI 调用函数
+// START: 修复版 generateDiaryEntry (增加历史记录检查，防止乱写百科全书)
 async function generateDiaryEntry(characterId, isManual = false) {
     if (isGenerating) {
         return;
@@ -17960,6 +17952,18 @@ async function generateDiaryEntry(characterId, isManual = false) {
         console.error(`[写作失败] 找不到ID为 "${characterId}" 的角色来写日记。`);
         return;
     }
+
+    // ▼▼▼ 核心修复：安检门 ▼▼▼
+    // 过滤掉系统指令，只看真正的对话
+    const validHistory = character.history.filter(m => !m.content.startsWith('[') && (m.role === 'user' || m.role === 'assistant'));
+    
+    // 如果不是手动点击（即自动触发），且有效对话少于 5 句，直接中止
+    // 这能防止 AI 在没有上下文时瞎编乱造（比如写成维基百科）
+    if (!isManual && validHistory.length < 5) {
+        console.log("对话历史太短，跳过自动日记生成，防止胡言乱语。");
+        return;
+    }
+    // ▲▲▲ 修复结束 ▲▲▲
 
     if (isManual) {
         showToast('正在为您撰写日记...');
@@ -18001,10 +18005,9 @@ async function generateDiaryEntry(characterId, isManual = false) {
         
         const aiResponseText = await callAiApi(messagesForApi);
         
-        // 【终极修复 A】: 调用那个独一无二的新名字的函数
         await saveDiaryEntry_FINAL_FIX(aiResponseText, character.id); 
         
-        showToast('一篇新的日记已经写好了！');
+        if (isManual) showToast('一篇新的日记已经写好了！');
         
         if (document.getElementById('diary-screen').classList.contains('active') && currentChatId === character.id) {
             renderDiaries();
@@ -18012,7 +18015,7 @@ async function generateDiaryEntry(characterId, isManual = false) {
 
     } catch (error) {
         console.error('日记生成失败:', error);
-        showToast(`日记生成失败: ${error.message}`);
+        if (isManual) showToast(`日记生成失败: ${error.message}`);
     } finally {
         isGenerating = false;
         typingIndicator.textContent = '';
