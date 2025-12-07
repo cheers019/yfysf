@@ -13562,6 +13562,50 @@ function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
  * @returns {HTMLElement|null} - 创建好的消息包装器元素，或在不需渲染时返回null
  */
 // START: 完美修复版 createMessageBubbleElement (表情包恢复原样，报告图片受限)
+// ▼▼▼ 新增：ID隔离工具 (解决多个小剧场冲突问题) ▼▼▼
+// ▼▼▼ 增强版：ID与Radio隔离工具 (解决剧场互斥、空白问题) ▼▼▼
+function isolateHtmlIds(html, suffix) {
+    if (!html || !suffix) return html;
+    
+    let result = html;
+
+    // --- 1. 隔离 ID (解决样式和JS定位冲突) ---
+    const idMatches = [...html.matchAll(/id=["']([a-zA-Z][\w-]*)["']/g)];
+    const ids = new Set(idMatches.map(m => m[1]));
+    
+    ids.forEach(oldId => {
+        const newId = `${oldId}_${suffix}`;
+        
+        // 1.1 替换 HTML 属性 (id, for, aria-controls, list)
+        // 注意：替换 label 的 for 属性非常重要，否则点击文字没反应
+        result = result.replace(new RegExp(`(id|for|aria-controls|list)=["']${oldId}["']`, 'g'), `$1="${newId}"`);
+        
+        // 1.2 替换 CSS 样式中的 ID 选择器 (#page1 { ... })
+        result = result.replace(new RegExp(`#${oldId}(?![\\w-])`, 'g'), `#${newId}`);
+        
+        // 1.3 替换 JS 代码中的 ID 引用 ('page1', "page1")
+        result = result.replace(new RegExp(`(['"])${oldId}\\1`, 'g'), `$1${newId}$1`);
+        
+        // 1.4 替换 href 锚点链接 (#page1)
+        result = result.replace(new RegExp(`href=["']#${oldId}["']`, 'g'), `href="#${newId}"`);
+    });
+
+    // --- 2. 隔离 Name (核心修复：解决“点一个灭一个”的问题) ---
+    // 专门针对 <input type="radio" name="...">
+    const nameMatches = [...html.matchAll(/name=["']([^"']+)["']/g)];
+    const names = new Set(nameMatches.map(m => m[1]));
+
+    names.forEach(oldName => {
+        const newName = `${oldName}_${suffix}`;
+        // 全局替换该 name，确保这组按钮只在当前剧场内互斥
+        result = result.replace(new RegExp(`name=["']${oldName}["']`, 'g'), `name="${newName}"`);
+    });
+    
+    return result;
+}
+// ▲▲▲ 工具结束 ▲▲▲
+// ▲▲▲ 工具结束 ▲▲▲
+// START: 防冲突增强版 createMessageBubbleElement (自动隔离小剧场ID)
 function createMessageBubbleElement(message) {
 
     // --- 1. 处理系统消息、撤回消息等特殊类型 ---
@@ -13642,8 +13686,8 @@ function createMessageBubbleElement(message) {
     
     const renderResult = applyAdvancedRenderingRules(rawText, currentChatId, isSent ? 'user' : 'ai');
 
-    // ▼▼▼ 样式定义：只针对 HTML 报告/小剧场 ▼▼▼
-    const reportStyle = `<style>
+    // 通用样式 (图片限制 + 容器样式)
+    const universalStyle = `<style>
         .ai-generated-theater img, 
         .ai-theater img { 
             max-width: 100% !important; 
@@ -13661,18 +13705,21 @@ function createMessageBubbleElement(message) {
     </style>`;
 
     if (renderResult.isRendered) {
-        // 是规则渲染的：加上样式
-        finalContentHTML = reportStyle + renderResult.html;
+        // ▼▼▼ 核心修复：调用隔离器，传入消息ID的后6位作为唯一后缀 ▼▼▼
+        const suffix = (id || Date.now()).toString().slice(-6);
+        finalContentHTML = universalStyle + isolateHtmlIds(renderResult.html, suffix);
+        // ▲▲▲ 修复结束 ▲▲▲
         isRenderedByRule = true;
     } 
     else if (content.includes('<div class="ai-theater"') || content.includes('class="ai-generated-theater"')) {
-        // 是 HTML 小剧场：加上样式
-        finalContentHTML = reportStyle + content; 
+        // ▼▼▼ 核心修复：调用隔离器 ▼▼▼
+        const suffix = (id || Date.now()).toString().slice(-6);
+        finalContentHTML = universalStyle + isolateHtmlIds(content, suffix); 
+        // ▲▲▲ 修复结束 ▲▲▲
         isRenderedByRule = true;    
     }
-    // ▲▲▲ 样式逻辑结束：普通消息不加这段代码，防止干扰判断 ▲▲▲
     else {
-        // 正则匹配准备
+        // 正则匹配准备 (普通消息处理)
         const aiQuoteRegex = /\[(?:.*?)引用了“(?:.*?:)?\s?([\s\S]+?)”的消息?并回复：([\s\S]+?)\]/;
         const musicShareRegex = /\[(?:.*?)分享了音乐：([\s\S]+?) - ([\s\S]+?)\]/;
         const locationRegex = /\[(.*?)的位置共享：主位置 '(.*?)', 详细位置 '(.*?)'\]|\[(.*?)分享了位置：主位置 '(.*?)', 详细位置 '(.*?)'\]/i;
@@ -13935,9 +13982,8 @@ function createMessageBubbleElement(message) {
             finalContentHTML = `<div class="image-bubble"><img src="${imageData}" alt="图片消息"></div>`;
         } else if (message.parts && message.parts[0] && message.parts[0].type === 'html') {
              // 后备逻辑：如果前面没被 detected，这里再次捕获
-            finalContentHTML = `<div class="ai-generated-theater">${message.parts[0].text}</div>`;
-             // 针对这里的后备逻辑，我们也加上限制样式（如果上面 isRenderedByRule 漏掉了）
-             finalContentHTML = `<style>.ai-generated-theater img { max-width: 100% !important; height: auto !important; border-radius: 8px; margin: 5px 0; }</style>` + finalContentHTML;
+            const suffix = (id || Date.now()).toString().slice(-6);
+            finalContentHTML = universalStyle + isolateHtmlIds(message.parts[0].text, suffix);
         } else {
             let innerText = textMatch ? textMatch[1].trim() : content.trim();
             if (urlRegex.test(innerText)) {
@@ -14033,6 +14079,7 @@ function createMessageBubbleElement(message) {
     wrapper.appendChild(bubbleRow);
     return wrapper;
 }
+
 
       // START: 最终修正版 addMessageBubble 函数 (替换旧版本)
 // START: 最终修正版 addMessageBubble 函数 (已修复多角色状态更新串台问题)
@@ -25666,29 +25713,79 @@ function cancelQuoteReply() {
   }
 // START: 新增 - HTML小剧场安全交互处理函数
 // [修正] 将函数附加到 window 对象，使其成为全局函数，以便 HTML onclick 可以调用
+// START: 修复版 handleTheaterClick (精准定位，只操作当前剧场内部元素)
 window.handleTheaterClick = function(element, action, targetSelector, value) {
     try {
-        // 寻找当前小剧场的根容器
-        const theaterRoot = element.closest('.ai-generated-theater');
-        if (!theaterRoot) return;
-
-        // 在当前小剧场内部查找目标元素
-        const targetElement = theaterRoot.querySelector(targetSelector);
-        if (!targetElement) return;
-
-        switch (action) {
-            case 'toggle-class':
-                targetElement.classList.toggle(value);
-                break;
-            case 'set-text':
-                targetElement.textContent = value;
-                break;
-            // 你未来可以在这里添加更多安全的操作，例如 'add-class', 'remove-class' 等
+        // 1. 寻找当前小剧场的根容器 (这是最关键的一步，划定操作范围)
+        const theaterRoot = element.closest('.ai-generated-theater') || element.closest('.ai-theater');
+        
+        if (!theaterRoot) {
+            console.warn("未找到小剧场根容器，无法执行操作。");
+            return;
         }
+
+        // 2. 在 *当前小剧场内部* 查找目标元素
+        // 这样即使页面上有100个 id="page1" 的元素，我们也只会找到当前这一个
+        const targetElement = theaterRoot.querySelector(targetSelector);
+        
+        if (!targetElement) {
+             // 如果直接查找失败，尝试查找带后缀的ID (因为我们之前加了后缀)
+             // 这一步是为了兼容旧的ID逻辑
+             const suffixMatch = theaterRoot.innerHTML.match(/id=["']([a-zA-Z0-9_-]+?)_([a-zA-Z0-9]{6})["']/);
+             if (suffixMatch) {
+                 const suffix = suffixMatch[2];
+                 const selectorWithoutHash = targetSelector.replace('#', '');
+                 const newSelector = `#${selectorWithoutHash}_${suffix}`;
+                 const retryTarget = theaterRoot.querySelector(newSelector);
+                 if (retryTarget) {
+                     performAction(retryTarget, action, value);
+                     return;
+                 }
+             }
+             return;
+        }
+
+        performAction(targetElement, action, value);
+
     } catch (e) {
         console.error("处理小剧场交互时出错:", e);
     }
+
+    function performAction(el, act, val) {
+        switch (act) {
+            case 'toggle-class':
+                el.classList.toggle(val);
+                break;
+            case 'add-class':
+                el.classList.add(val);
+                break;
+            case 'remove-class':
+                el.classList.remove(val);
+                break;
+            case 'set-text':
+                el.textContent = val;
+                break;
+            case 'show': // 专门用于页面切换
+                el.style.display = 'block';
+                break;
+            case 'hide': // 专门用于页面切换
+                el.style.display = 'none';
+                break;
+             case 'switch-tab': 
+                // 这是一个高级操作：隐藏当前组的所有其他页，只显示目标页
+                // 需要按钮提供 grouping class，例如 "tab-page"
+                const groupClass = val; // 假设 val 传的是 "tab-page"
+                const container = el.parentElement; 
+                if (container) {
+                    const allTabs = container.querySelectorAll('.' + groupClass);
+                    allTabs.forEach(tab => tab.style.display = 'none'); // 隐藏同一组的所有页
+                    el.style.display = 'block'; // 显示目标页
+                }
+                break;
+        }
+    }
 }
+
 // END: 新增 - HTML小剧场安全交互处理函数
   // 初始化绑定
   if (document.readyState === 'loading') {
