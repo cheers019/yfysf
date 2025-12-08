@@ -11344,41 +11344,96 @@ const updatePlayerUI = () => {
 
         // --- App Setup Functions ---
         // START: 新增主页翻页逻辑
+// START: 电脑端/手机端通用翻页逻辑 (鼠标拖拽 + 键盘方向键)
 function setupHomeScreenPaging() {
     const container = document.querySelector('.home-page-wrapper');
     const dots = document.querySelectorAll('.home-page-indicator .dot');
-    let touchStartX = 0;
+    const homeContainer = document.getElementById('home-container');
+    
+    let startX = 0;
+    let isDragging = false;
     let currentPageIndex = 0;
 
+    // 执行翻页动作
     function goToPage(index) {
-        if (index < 0 || index > 1) return;
+        if (index < 0 || index > 1) return; // 目前只有2页，防止越界
         container.style.transform = `translateX(-${index * 50}%)`;
+        
+        // 更新底部圆点状态
         dots.forEach(dot => dot.classList.remove('active'));
-        dots[index].classList.add('active');
+        if(dots[index]) dots[index].classList.add('active');
+        
         currentPageIndex = index;
     }
 
-    document.getElementById('home-container').addEventListener('touchstart', (e) => {
-        touchStartX = e.touches[0].clientX;
+    // ===========================
+    // 1. 手机端触摸支持 (原逻辑)
+    // ===========================
+    homeContainer.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
     });
 
-    document.getElementById('home-container').addEventListener('touchend', (e) => {
+    homeContainer.addEventListener('touchend', (e) => {
         const touchEndX = e.changedTouches[0].clientX;
-        const diff = touchEndX - touchStartX;
+        handleSwipe(startX, touchEndX);
+    });
 
-        if (Math.abs(diff) > 50) { // 阈值，防止误触
+    // ===========================
+    // 2. 电脑端鼠标拖拽支持 (新增)
+    // ===========================
+    homeContainer.addEventListener('mousedown', (e) => {
+        startX = e.clientX;
+        isDragging = true;
+    });
+
+    homeContainer.addEventListener('mouseup', (e) => {
+        if (!isDragging) return;
+        const endX = e.clientX;
+        isDragging = false;
+        handleSwipe(startX, endX);
+    });
+    
+    // 防止鼠标移出屏幕导致状态卡死
+    homeContainer.addEventListener('mouseleave', () => {
+        isDragging = false;
+    });
+
+    // ===========================
+    // 3. 通用滑动判断逻辑
+    // ===========================
+    function handleSwipe(start, end) {
+        const diff = end - start;
+        const threshold = 50; // 滑动超过50像素才算翻页，防止误触点击
+
+        if (Math.abs(diff) > threshold) {
             if (diff < 0 && currentPageIndex === 0) {
-                goToPage(1); // Swipe left
+                goToPage(1); // 向左滑 -> 去第二页
             } else if (diff > 0 && currentPageIndex === 1) {
-                goToPage(0); // Swipe right
+                goToPage(0); // 向右滑 -> 回第一页
+            }
+        }
+    }
+
+    // ===========================
+    // 4. 键盘方向键支持 (新增)
+    // ===========================
+    document.addEventListener('keydown', (e) => {
+        // 只有当主屏幕显示时才响应键盘
+        if (document.getElementById('home-container').classList.contains('active')) {
+            if (e.key === 'ArrowRight') {
+                goToPage(1); // 按右键去第二页
+            } else if (e.key === 'ArrowLeft') {
+                goToPage(0); // 按左键回第一页
             }
         }
     });
 
+    // 底部圆点点击切换
     dots.forEach(dot => {
         dot.addEventListener('click', () => goToPage(parseInt(dot.dataset.index)));
     });
 }
+// END: 电脑端/手机端通用翻页逻辑
 
 // END: 新增主页翻页逻辑
 // START: 新增渲染器应用核心逻辑
