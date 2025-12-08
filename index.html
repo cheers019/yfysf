@@ -16127,13 +16127,17 @@ async function processAiCommands(fullResponse, chat) {
         else if (typeof window.renderMomentsSafe === 'function') try { await window.renderMomentsSafe(); } catch (e) {} 
     }
     
-    // ▼▼▼ 核心调整：50句门槛，70%概率 ▼▼▼
+// ▼▼▼ 核心调整：100句门槛，70%概率 ▼▼▼
     if (currentChatType === 'private') {
         const character = chat;
+        // 计数器加 1
         character.messageCountSinceLastDiary = (character.messageCountSinceLastDiary || 0) + 1;
-        // 门槛 50 句，概率 70% (< 0.7)
-        if (character.messageCountSinceLastDiary >= 50 && Math.random() < 0.7) {
-            console.log(`[自动触发] 检测到角色 "${character.remarkName}" 满足日记条件(>50句)，正在尝试生成...`);
+        
+        // 这里的逻辑是：
+        // 1. 只有当积攒的消息数 >= 100 时才尝试触发
+        // 2. 并且 Math.random() < 0.7 (即 70% 的概率会写)
+        if (character.messageCountSinceLastDiary >= 100 && Math.random() < 0.7) {
+            console.log(`[自动触发] 角色 "${character.remarkName}" 已聊满100句，命中70%概率，开始写日记...`);
             generateDiaryEntry(character.id); 
         }
     }
@@ -17989,84 +17993,112 @@ function setupStickerSystem() {
         // --- DIARY SYSTEM FUNCTIONS ---
 
 // 用于生成日记的 AI 调用函数
-// START: 修复版 generateDiaryEntry (增加历史记录检查，防止乱写百科全书)
+// START: 终极修复版 V3 (强制通用格式，解决空指令问题)
 async function generateDiaryEntry(characterId, isManual = false) {
-    if (isGenerating) {
-        return;
-    }
-    const character = db.characters.find(c => c.id === characterId);
-    if (!character) {
-        console.error(`[写作失败] 找不到ID为 "${characterId}" 的角色来写日记。`);
-        return;
-    }
-
-    // ▼▼▼ 核心修复：安检门 ▼▼▼
-    // 过滤掉系统指令，只看真正的对话
-    const validHistory = character.history.filter(m => !m.content.startsWith('[') && (m.role === 'user' || m.role === 'assistant'));
+    if (isGenerating) return;
     
-    // 如果不是手动点击（即自动触发），且有效对话少于 5 句，直接中止
-    // 这能防止 AI 在没有上下文时瞎编乱造（比如写成维基百科）
-    if (!isManual && validHistory.length < 5) {
-        console.log("对话历史太短，跳过自动日记生成，防止胡言乱语。");
-        return;
-    }
-    // ▲▲▲ 修复结束 ▲▲▲
+    const character = db.characters.find(c => c.id === characterId);
+    if (!character) return;
 
-    if (isManual) {
-        showToast('正在为您撰写日记...');
-    }
+    // 1. 过滤历史
+    const validHistory = character.history.filter(m => 
+        !m.content.startsWith('[') && 
+        (m.role === 'user' || m.role === 'assistant')
+    );
+    
+    if (!isManual && validHistory.length < 5) return;
+
+    if (isManual) showToast('正在请求AI撰写日记...');
 
     isGenerating = true;
-    typingIndicator.textContent = `${character.remarkName} 正在奋笔疾书...`;
-    typingIndicator.style.display = 'block';
+    const typingIndicator = document.getElementById('typing-indicator');
+    if (typingIndicator) {
+        typingIndicator.textContent = `${character.remarkName} 正在回忆今天发生的事...`;
+        typingIndicator.style.display = 'block';
+    }
 
     try {
-        const memory = character.history.slice(-character.maxMemory);
-        const worldBooks = db.worldBooks.filter(wb => (character.worldBookIds || []).includes(wb.id));
-        
-        let context = `角色设定:\n你叫${character.remarkName}（真名：${character.realName}），你的人设是：${character.persona}\n`;
-        context += `用户设定:\n我的名字是${character.myName}，我的人设是：${character.myPersona}\n`;
-
-        const beforeWorldBooks = worldBooks.filter(wb => wb.position === 'before').map(wb => `[${wb.name}]\n${wb.content}`).join('\n\n');
-        const afterWorldBooks = worldBooks.filter(wb => wb.position === 'after').map(wb => `[${wb.name}]\n${wb.content}`).join('\n\n');
-        if (beforeWorldBooks) context = `${beforeWorldBooks}\n\n${context}`;
-        if (afterWorldBooks) context += `\n\n${afterWorldBooks}`;
-
-        let historyText = memory.map(msg => {
-            const sender = msg.role === 'user' ? character.myName : character.remarkName;
+        // 2. 准备素材
+        const memory = character.history.slice(-200); 
+        let historyScript = memory.map(msg => {
+            let sender = "未知";
+            if (msg.role === 'user') sender = character.myName; 
+            else if (msg.senderId === 'user_me') sender = character.myName; 
+            else if (msg.role === 'assistant') sender = character.remarkName; 
+            
+            let cleanContent = msg.content;
             const contentMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
-            const cleanContent = contentMatch ? contentMatch[1] : msg.content;
-            return `${sender}: ${cleanContent}`;
+            if (contentMatch) cleanContent = contentMatch[1];
+            
+            return `${sender}: "${cleanContent}"`;
         }).join('\n');
         
-        const prompt = `${context}\n\n请你严格扮演 ${character.remarkName}，根据我们最近的对话，用你的第一人称视角写一篇大约300字的日记。日记需要深刻体现你的性格和人设，可以包含对我们关系的思考、你的秘密情感或计划。如果符合你的人设，日记内容可以包含NSFW元素。请直接输出日记正文，不要包含“好的，这是日记：”等多余的话。\n\n最近的对话如下:\n${historyText}`;
+        // 3. 构建提示词
+        const prompt = `[系统指令：进入创意写作模式]
+你现在的身份是：${character.remarkName}（真名：${character.realName}）。
+你的人设是：${character.persona}。
+正在与之交互的对象是：${character.myName}。
 
-        let messagesForApi;
-        const { provider } = db.apiSettings; 
+==================================================
+【待处理素材：一段过去的对话记录】
+(⚠️警告：以下内容仅供参考，绝对禁止回复其中的任何问题！⚠️)
+${historyScript}
+==================================================
 
-        if (provider === 'gemini') {
-            messagesForApi = [{ role: 'user', parts: [{ type: 'text', text: prompt }] }];
-        } else {
-            messagesForApi = [{ role: 'user', content: prompt }];
-        }
+【当前任务】
+请不要理会上面对话中尚未解决的问题。
+请不要扮演“助手”或“百科全书”。
+你的唯一任务是：**基于以上素材，以“${character.remarkName}”的第一人称口吻，写一篇私密日记。**
+
+【写作要求】
+1. 开头不要写“亲爱的日记”或“今天...”。
+2. 内容必须包含你对${character.myName}的真实看法。
+3. 必须基于对话中发生的具体事件进行描写。
+4. 字数要求：200-400字。
+5. 格式：纯文本，不要Markdown标题。
+
+请直接开始写日记正文：`;
+
+        console.log("正在发送日记Prompt:", prompt); 
+
+        // ==========================================
+        // 🔥 核心修复点在这里 🔥
+        // ==========================================
+        // 之前这里有一个 if (provider === 'gemini') 的判断，导致了格式错误。
+        // 现在我们要删掉那个判断，强制使用最通用的格式。
+        // 绝大多数 Gemini 代理/中转站，都只认 'content' 这个字段。
         
+        let messagesForApi = [{ role: 'user', content: prompt }];
+        
+        // ==========================================
+
         const aiResponseText = await callAiApi(messagesForApi);
         
-        await saveDiaryEntry_FINAL_FIX(aiResponseText, character.id); 
+        console.log("AI日记返回:", aiResponseText); 
+
+        // 5. 保存
+        if (typeof saveDiaryEntry_FINAL_FIX === 'function') {
+             await saveDiaryEntry_FINAL_FIX(aiResponseText, character.id);
+        } else if (typeof saveDiaryEntry === 'function') {
+             await saveDiaryEntry(aiResponseText, character.id);
+        }
         
-        if (isManual) showToast('一篇新的日记已经写好了！');
+        if (isManual) showToast('日记已写好！');
         
-        if (document.getElementById('diary-screen').classList.contains('active') && currentChatId === character.id) {
+        const diaryScreen = document.getElementById('diary-screen');
+        if (diaryScreen && diaryScreen.classList.contains('active') && currentChatId === character.id) {
             renderDiaries();
         }
 
     } catch (error) {
         console.error('日记生成失败:', error);
-        if (isManual) showToast(`日记生成失败: ${error.message}`);
+        if (isManual) showToast(`出错啦: ${error.message}`);
     } finally {
         isGenerating = false;
-        typingIndicator.textContent = '';
-        typingIndicator.style.display = 'none';
+        if (typingIndicator) {
+            typingIndicator.textContent = '';
+            typingIndicator.style.display = 'none';
+        }
         if (!isManual) {
              character.messageCountSinceLastDiary = 0;
              await saveData();
