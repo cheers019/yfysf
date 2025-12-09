@@ -14100,7 +14100,7 @@ function createMessageBubbleElement(message) {
     infoDiv.innerHTML = `<span class="message-time">${timeString}</span>`;
     infoDiv.prepend(avatarContainer);
 
-    if (isRenderedByRule) {
+if (isRenderedByRule) {
         const theaterNode = document.createElement('div'); theaterNode.className = 'ai-generated-theater'; theaterNode.innerHTML = finalContentHTML;
         bubbleRow.appendChild(infoDiv); bubbleRow.appendChild(theaterNode);
     } else {
@@ -14112,7 +14112,18 @@ function createMessageBubbleElement(message) {
         const hasTranscript = tempContainer.querySelector('.voice-transcript');
 
         if (specialBubble && specialClasses.some(cls => specialBubble.classList.contains(cls)) && !hasTranscript) {
-            bubbleRow.appendChild(infoDiv); bubbleRow.appendChild(specialBubble); 
+            bubbleRow.appendChild(infoDiv); 
+            bubbleRow.appendChild(specialBubble); 
+            
+            // --- 修复开始：如果是礼物卡片，把描述部分也加进去，防止点不开 ---
+            if (specialBubble.classList.contains('gift-card')) {
+                const giftDesc = tempContainer.querySelector('.gift-card-description');
+                if (giftDesc) {
+                    bubbleRow.appendChild(giftDesc);
+                }
+            }
+            // --- 修复结束 ---
+
         } else {
             // 普通文字或语音
             const bubbleElement = document.createElement('div');
