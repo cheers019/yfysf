@@ -16198,7 +16198,7 @@ async function processAiCommands(fullResponse, chat) {
         // 这里的逻辑是：
         // 1. 只有当积攒的消息数 >= 100 时才尝试触发
         // 2. 并且 Math.random() < 0.7 (即 70% 的概率会写)
-        if (character.messageCountSinceLastDiary >= 100 && Math.random() < 0.7) {
+        if (character.messageCountSinceLastDiary >= 100 && Math.random() < 0.4) {
             console.log(`[自动触发] 角色 "${character.remarkName}" 已聊满100句，命中70%概率，开始写日记...`);
             generateDiaryEntry(character.id); 
         }
@@ -18033,7 +18033,7 @@ async function generateDiaryEntry(characterId, isManual = false) {
 
     try {
         // 2. 准备素材
-        const memory = character.history.slice(-200); 
+        const memory = character.history.slice(-100); 
         let historyScript = memory.map(msg => {
             let sender = "未知";
             if (msg.role === 'user') sender = character.myName; 
@@ -18066,7 +18066,7 @@ ${historyScript}
 
 【写作要求】
 1. 开头不要写“亲爱的日记”或“今天...”。
-2. 内容必须包含你对${character.myName}的真实看法。
+2. 日记需要深刻体现你的性格和人设，可以包含对我们关系的思考、你的秘密情感或计划。如果符合你的人设，日记内容可以包含NSFW元素。
 3. 必须基于对话中发生的具体事件进行描写。
 4. 字数要求：200-400字。
 5. 格式：纯文本，不要Markdown标题。
