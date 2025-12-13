@@ -11555,6 +11555,7 @@ function setupHomeScreenPaging() {
 // END: 新增主页翻页逻辑
 // START: 新增渲染器应用核心逻辑
 // START: 渲染器应用核心逻辑 (完整功能版)
+// START: 渲染器应用核心逻辑 (已包含上下文删除功能)
 function setupRendererApp() {
     let currentRendererCategoryId = 'all';
 
@@ -11579,42 +11580,41 @@ function setupRendererApp() {
     const ruleHtmlInput = document.getElementById('renderer-rule-html');
     const ruleTrimInput = document.getElementById('renderer-rule-trim');
     const ruleEnabledCheckbox = document.getElementById('renderer-rule-enabled');
+    // 新增：获取上下文删除的勾选框
+    const ruleRemoveContextCheckbox = document.getElementById('renderer-rule-remove-context');
     const charBindingList = document.getElementById('renderer-char-binding-list');
 
     // --- 核心渲染函数 ---
-function updateRendererPreview() {
-    const regexInput = document.getElementById('renderer-rule-regex').value;
-    const htmlInput = document.getElementById('renderer-rule-html').value;
-    const testInput = document.getElementById('renderer-rule-test-input').value;
-    const previewOutput = document.getElementById('renderer-rule-preview-output');
-    
-    if (!testInput) {
-        previewOutput.innerHTML = '<span style="color: #aaa;">请输入测试文本以查看效果</span>';
-        return;
+    function updateRendererPreview() {
+        const regexInput = document.getElementById('renderer-rule-regex').value;
+        const htmlInput = document.getElementById('renderer-rule-html').value;
+        const testInput = document.getElementById('renderer-rule-test-input').value;
+        const previewOutput = document.getElementById('renderer-rule-preview-output');
+        
+        if (!testInput) {
+            previewOutput.innerHTML = '<span style="color: #aaa;">请输入测试文本以查看效果</span>';
+            return;
+        }
+
+        if (!regexInput || !htmlInput) {
+            previewOutput.textContent = testInput; 
+            return;
+        }
+        
+        try {
+            const flags = Array.from(document.querySelectorAll('.regex-flags-container input:checked')).map(cb => cb.value).join('');
+            const regex = new RegExp(regexInput, flags);
+            if (regex.test(testInput)) {
+                regex.lastIndex = 0; 
+                previewOutput.innerHTML = testInput.replace(regex, htmlInput);
+            } else {
+                previewOutput.textContent = testInput; 
+            }
+        } catch (error) {
+            previewOutput.innerHTML = `<span style="color: red; font-weight: bold;">正则表达式错误:</span><br><span style="font-family: monospace;">${error.message}</span>`;
+        }
     }
 
-    if (!regexInput || !htmlInput) {
-        previewOutput.textContent = testInput; // 没有规则可应用，显示原文
-        return;
-    }
-    
-    try {
-        const flags = Array.from(document.querySelectorAll('.regex-flags-container input:checked')).map(cb => cb.value).join('');
-        const regex = new RegExp(regexInput, flags);
-        
-        // 测试正则表达式是否匹配
-        if (regex.test(testInput)) {
-            // 必须重置 lastIndex 才能保证全局匹配 (g flag) 的正确性
-            regex.lastIndex = 0; 
-            previewOutput.innerHTML = testInput.replace(regex, htmlInput);
-        } else {
-            previewOutput.textContent = testInput; // 没有匹配，显示原文
-        }
-    } catch (error) {
-        // 正则表达式语法无效，提供错误反馈
-        previewOutput.innerHTML = `<span style="color: red; font-weight: bold;">正则表达式错误:</span><br><span style="font-family: monospace;">${error.message}</span>`;
-    }
-}
     function renderRendererCategories() {
         categoryList.innerHTML = '';
         const allItem = document.createElement('li');
@@ -11646,63 +11646,27 @@ function updateRendererPreview() {
             const li = document.createElement('li');
             li.className = 'list-item';
             li.dataset.id = rule.id;
+            // 在列表中也显示个小标记
+            const contextTag = rule.removeFromContext ? '<span style="font-size:10px; color:red; border:1px solid red; border-radius:4px; padding:0 2px; margin-left:5px;">删</span>' : '';
             li.innerHTML = `
                 <div class="item-details">
-                    <div class="rule-name">${rule.name} ${rule.enabled ? '' : '(已禁用)'}</div>
+                    <div class="rule-name">${rule.name} ${contextTag} ${rule.enabled ? '' : '(已禁用)'}</div>
                     <div class="rule-regex">${rule.regex}</div>
                 </div>
             `;
             ruleList.appendChild(li);
         });
-    }// START: 新增渲染器分类删除功能
-// --- 分类列表长按/右键删除 ---
-categoryList.addEventListener('contextmenu', e => {
-    e.preventDefault();
-    const item = e.target.closest('.list-item');
-    if (item && item.dataset.id !== 'all') { // "全部" 分类不能删除
-        const categoryId = item.dataset.id;
-        const category = db.rendererCategories.find(c => c.id === categoryId);
-        if (category) {
-            createContextMenu([
-                {
-                    label: `删除分类 "${category.name}"`,
-                    danger: true,
-                    action: async () => {
-                        if (confirm(`确定要删除分类 "${category.name}" 吗？\n该分类下的所有规则将被移动到未分类状态。`)) {
-                            // 1. 将该分类下的规则 categoryId 设为 null
-                            db.renderers.forEach(rule => {
-                                if (rule.categoryId === categoryId) {
-                                    rule.categoryId = null;
-                                }
-                            });
-                            // 2. 从分类列表中删除该分类
-                            db.rendererCategories = db.rendererCategories.filter(c => c.id !== categoryId);
-                            
-                            await saveData();
-                            
-                            // 3. 刷新UI
-                            currentRendererCategoryId = 'all'; // 返回“全部”视图
-                            renderRendererCategories();
-                            renderRendererRules();
-                            showToast('分类已删除');
-                        }
-                    }
-                }
-            ], e.clientX, e.clientY);
-        }
     }
-});
 
-categoryList.addEventListener('touchstart', (e) => {
-    const item = e.target.closest('.list-item');
-    if (item && item.dataset.id !== 'all') {
-        longPressTimer = setTimeout(() => {
-            const touch = e.touches[0];
+    // --- 分类列表长按/右键删除 ---
+    categoryList.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        const item = e.target.closest('.list-item');
+        if (item && item.dataset.id !== 'all') { 
             const categoryId = item.dataset.id;
             const category = db.rendererCategories.find(c => c.id === categoryId);
-            if(category) {
-                // 此处代码与 contextmenu 重复，可以封装成一个函数，但为简单起见直接复制
-                 createContextMenu([
+            if (category) {
+                createContextMenu([
                     {
                         label: `删除分类 "${category.name}"`,
                         danger: true,
@@ -11722,18 +11686,48 @@ categoryList.addEventListener('touchstart', (e) => {
                             }
                         }
                     }
-                ], touch.clientX, touch.clientY);
+                ], e.clientX, e.clientY);
             }
-        }, 500);
-    }
-});
-categoryList.addEventListener('touchend', () => clearTimeout(longPressTimer));
-categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-// END: 新增渲染器分类删除功能
+        }
+    });
+
+    categoryList.addEventListener('touchstart', (e) => {
+        const item = e.target.closest('.list-item');
+        if (item && item.dataset.id !== 'all') {
+            longPressTimer = setTimeout(() => {
+                const touch = e.touches[0];
+                const categoryId = item.dataset.id;
+                const category = db.rendererCategories.find(c => c.id === categoryId);
+                if(category) {
+                     createContextMenu([
+                        {
+                            label: `删除分类 "${category.name}"`,
+                            danger: true,
+                            action: async () => {
+                                if (confirm(`确定要删除分类 "${category.name}" 吗？\n该分类下的所有规则将被移动到未分类状态。`)) {
+                                    db.renderers.forEach(rule => {
+                                        if (rule.categoryId === categoryId) {
+                                            rule.categoryId = null;
+                                        }
+                                    });
+                                    db.rendererCategories = db.rendererCategories.filter(c => c.id !== categoryId);
+                                    await saveData();
+                                    currentRendererCategoryId = 'all';
+                                    renderRendererCategories();
+                                    renderRendererRules();
+                                    showToast('分类已删除');
+                                }
+                            }
+                        }
+                    ], touch.clientX, touch.clientY);
+                }
+            }, 500);
+        }
+    });
+    categoryList.addEventListener('touchend', () => clearTimeout(longPressTimer));
+    categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
 
     // --- 弹窗与表单处理 ---
-    
-    // 用这个新版本替换旧的 openRuleModal 函数
     function openRuleModal(ruleId = null) {
         ruleForm.reset();
         charBindingList.innerHTML = '';
@@ -11754,7 +11748,9 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
                 ruleHtmlInput.value = rule.html;
                 ruleTrimInput.value = (rule.trimStrings || []).join('\n');
                 ruleEnabledCheckbox.checked = rule.enabled;
-                document.getElementById('renderer-rule-priority').value = rule.priority || 50; // 加载优先级
+                // 加载上下文删除设置
+                ruleRemoveContextCheckbox.checked = rule.removeFromContext || false;
+                document.getElementById('renderer-rule-priority').value = rule.priority || 50; 
 
                 document.querySelectorAll('input[name="renderer-scope"]').forEach(cb => {
                     cb.checked = (rule.scope || []).includes(cb.value);
@@ -11771,14 +11767,14 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
         } else { // 创建模式
             ruleIdInput.value = '';
             ruleEnabledCheckbox.checked = true;
+            ruleRemoveContextCheckbox.checked = false; // 默认不开启
             document.getElementById('regex-flag-g').checked = true;
             document.querySelector('input[name="renderer-scope"][value="ai"]').checked = true;
-            document.getElementById('renderer-rule-priority').value = 50; // 新规则的默认优先级
+            document.getElementById('renderer-rule-priority').value = 50; 
         }
         
-        // 重置并绑定实时预览功能
         document.getElementById('renderer-rule-test-input').value = '';
-        updateRendererPreview(); // 打开时立即更新一次预览
+        updateRendererPreview();
         
         ['renderer-rule-regex', 'renderer-rule-html', 'renderer-rule-test-input'].forEach(id => {
             document.getElementById(id).addEventListener('input', updateRendererPreview);
@@ -11789,6 +11785,7 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
         
         ruleModal.classList.add('visible');
     }
+
     ruleForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = ruleIdInput.value;
@@ -11802,11 +11799,13 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
             html: ruleHtmlInput.value,
             trimStrings: ruleTrimInput.value.split('\n').map(s => s.trim()).filter(Boolean),
             enabled: ruleEnabledCheckbox.checked,
+            // 保存上下文删除设置
+            removeFromContext: ruleRemoveContextCheckbox.checked,
             scope: selectedScopes,
             flags: selectedFlags,
             characterIds: selectedCharIds,
             categoryId: currentRendererCategoryId === 'all' ? ((db.rendererCategories && db.rendererCategories[0]?.id) || null) : currentRendererCategoryId,
-            priority: parseInt(document.getElementById('renderer-rule-priority').value, 10) || 50 // 保存优先级
+            priority: parseInt(document.getElementById('renderer-rule-priority').value, 10) || 50
         };
         
         if (!ruleData.name || !ruleData.regex) return showToast('规则名称和正则表达式不能为空！');
@@ -11852,7 +11851,6 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
                 const content = await file.text();
                 const data = JSON.parse(content);
 
-                // 创建分类
                 const categoryName = data.scriptName;
                 let category = (db.rendererCategories || []).find(c => c.name === categoryName);
                 if (!category) {
@@ -11860,12 +11858,10 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
                     db.rendererCategories.push(category);
                 }
 
-                // 解析Regex
                 const regexMatch = data.findRegex.match(/^\/(.*)\/([gimsuy]*)$/);
                 const regex = regexMatch ? regexMatch[1] : data.findRegex;
                 const flags = regexMatch ? [...new Set(regexMatch[2].split(''))] : ['g'];
                 
-                // 映射Scope
                 const scopeMap = { 1: 'user', 2: 'ai' };
                 const scope = (data.placement || [2]).map(p => scopeMap[p]).filter(Boolean);
 
@@ -11878,8 +11874,9 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
                     enabled: !data.disabled,
                     scope: scope,
                     flags: flags,
-                    characterIds: [], // 默认不绑定任何角色
-                    categoryId: category.id
+                    characterIds: [], 
+                    categoryId: category.id,
+                    removeFromContext: false // 导入的默认不开启，防止误伤
                 };
                 db.renderers.push(newRule);
                 importedCount++;
@@ -11895,10 +11892,9 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
             renderRendererRules();
             showToast(`成功导入 ${importedCount} 条规则！`);
         }
-        importRulesInput.value = null; // 清空以便下次选择
+        importRulesInput.value = null; 
     });
 
-    // --- 事件监听 ---
     document.querySelector('.app-icon[data-target="renderer-screen"]').addEventListener('click', () => {
         currentRendererCategoryId = 'all';
         renderRendererCategories();
@@ -15730,6 +15726,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
 }
 
 // --- 你的主函数 getAiReply ---
+// --- 你的主函数 getAiReply (已添加上下文清洗逻辑) ---
 async function getAiReply() {
     // 1. 拉黑检测
     if (currentChatType === 'private') {
@@ -15788,6 +15785,54 @@ async function getAiReply() {
         // --- 准备历史记录 (过滤掉 system 消息) ---
         const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role !== 'system');
 
+        // ==========================================
+        // ★★★ 新增：上下文清洗逻辑 (渲染时从上下文删除) ★★★
+        // ==========================================
+        
+        // 1. 找出所有启用了“从上下文删除”的有效规则
+        // 确保规则是启用的(enabled)，且勾选了删除开关(removeFromContext)，且正则表达式不为空
+        const rulesToRemove = (db.renderers || []).filter(r => r.enabled && r.removeFromContext && r.regex);
+
+        // 2. 如果有这样的规则，就遍历历史记录进行清洗
+        const cleanedHistorySlice = historySlice.map(msg => {
+            let contentToClean = msg.content;
+            
+            // 如果没有要清洗的规则，直接返回原内容
+            if (rulesToRemove.length === 0) return msg;
+
+            // 遍历每一条规则
+            rulesToRemove.forEach(rule => {
+                // 检查规则是否适用于当前角色 (role: 'user' 或 'assistant')
+                // 这里的 msg.role 是 OpenAI 格式的 role
+                // 我们的规则 scope 是 'user' 或 'ai'
+                const msgScope = msg.role === 'user' ? 'user' : 'ai';
+                
+                // 检查 Scope 是否匹配
+                if (rule.scope && !rule.scope.includes(msgScope)) return;
+
+                // 检查 Character Binding 是否匹配 (如果规则绑定了特定角色)
+                if (rule.characterIds && rule.characterIds.length > 0 && !rule.characterIds.includes(chat.id)) return;
+
+                try {
+                    const flags = (rule.flags || ['g']).join('');
+                    const regex = new RegExp(rule.regex, flags);
+                    // 将匹配到的部分替换为空字符串
+                    contentToClean = contentToClean.replace(regex, '');
+                } catch (e) {
+                    console.warn(`清洗规则 "${rule.name}" 执行出错:`, e);
+                }
+            });
+
+            // 返回一个新的消息对象，内容是清洗过的
+            // 只有当内容不为空时才保留（或者保留空字符串也可以，看API是否接受）
+            // 这里我们保留原结构，只是替换 content
+            return { ...msg, content: contentToClean };
+        });
+
+        // ==========================================
+        // ★★★ 清洗逻辑结束 ★★★
+        // ==========================================
+
         // --- [特色功能 1]：注入 AI 空间 (POV) 后台记忆 ---
         try {
             if (currentChatType === 'private' && chat.povCache && chat.povCache.conversations) {
@@ -15806,7 +15851,8 @@ async function getAiReply() {
                         }
                         const memoryText = memorySnippet.map(msg => `${msg.sender}: ${msg.content}`).join('\n');
                         const contextMessageContent = `[system: 这是你最近在后台和“${otherPartyName}”的一段对话回顾，发生在我与你当前对话之前。你需要参考它来记起最近发生的事，并在与我的对话中自然地体现出来。\n--- 对话回顾开始 ---\n${memoryText}\n--- 对话回顾结束 ---]`;
-                        historySlice.push({
+                        // 注意：这里 push 到 cleanedHistorySlice
+                        cleanedHistorySlice.push({
                             role: 'user',
                             content: contextMessageContent,
                             parts: [{ type: 'text', text: contextMessageContent }]
@@ -15820,7 +15866,8 @@ async function getAiReply() {
 
         // --- [特色功能 2]：注入论坛帖子回忆 ---
         if (currentChatType === 'private') {
-            const lastUserMessage = historySlice[historySlice.length - 1]?.content;
+            // 使用清洗后的最后一条消息来判断
+            const lastUserMessage = cleanedHistorySlice[cleanedHistorySlice.length - 1]?.content;
             if (lastUserMessage && /帖子|论坛|分享/.test(lastUserMessage) && typeof forumCache !== 'undefined') {
                 let latestUserPost = null;
                 for (const boardId in forumCache) {
@@ -15831,7 +15878,7 @@ async function getAiReply() {
                 }
                 if (latestUserPost) {
                     const postContext = `[system-forum-post: {"title":"${latestUserPost.title}", "content":"${latestUserPost.content}"}]`;
-                    historySlice.push({
+                    cleanedHistorySlice.push({
                         role: 'user',
                         content: postContext,
                         parts: [{ type: 'text', text: postContext }]
@@ -15854,7 +15901,7 @@ async function getAiReply() {
                         imageDesc: m.imageDesc
                     }));
                     const momentsPromptPart = `\n[system-moments: ${JSON.stringify(momentsData)}]`;
-                    historySlice.push({
+                    cleanedHistorySlice.push({
                         role: 'user',
                         content: momentsPromptPart,
                         parts: [{ type: 'text', text: momentsPromptPart }]
@@ -15865,8 +15912,8 @@ async function getAiReply() {
             console.warn('attach pending moments failed', e);
         }
 
-        // --- 5. 构建请求体 ---
-        const processedHistory = historySlice.map(msg => {
+        // --- 5. 构建请求体 (使用 cleanedHistorySlice) ---
+        const processedHistory = cleanedHistorySlice.map(msg => {
             if (msg.parts && msg.parts.some(p => p.type === 'image')) {
                 const textPart = msg.parts.find(p => p.type === 'text');
                 const imagePart = msg.parts.find(p => p.type === 'image');
@@ -15922,7 +15969,9 @@ async function getAiReply() {
                         { inline_data: { mime_type: msg.mimeType, data: msg.data } }
                     ];
                 } else {
-                    const textVal = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                    // Gemini 对空内容很敏感，如果清洗后为空，给一个空格
+                    let textVal = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                    if (!textVal || textVal.trim() === "") textVal = " "; 
                     parts = [{ text: textVal }];
                 }
                 return { role, parts };
@@ -15953,7 +16002,6 @@ async function getAiReply() {
             }
 
             if (aiText) {
-                // 现在这里调用函数就不会报错了，因为它在上面定义了
                 await handleAiReplyContent(aiText, chat, chat.id, currentChatType);
             } else {
                 throw new Error("Gemini 返回了空内容。");
@@ -16005,7 +16053,6 @@ async function getAiReply() {
         if (typingIndicator) typingIndicator.style.display = 'none';
     }
 }
-// ▲▲▲ 替换结束 ▲▲▲
 
 
 
@@ -30707,7 +30754,7 @@ fileInput.addEventListener('change', async (e)=>{
 <!-- =============================================================== -->
 <!-- END: 交换日记内容查看器 -->
 <!-- =============================================================== -->
-<!-- START: 升级后的渲染器编辑弹窗 -->
+<!-- START: 升级后的渲染器编辑弹窗 (含上下文删除开关) -->
 <div id="edit-renderer-rule-modal" class="modal-overlay">
     <div class="modal-window" style="max-width: 95%;">
         <h3>创建/编辑渲染规则</h3>
@@ -30746,12 +30793,22 @@ fileInput.addEventListener('change', async (e)=>{
             <label>其他选项</label>
             <div class="scope-options">
                <label><input type="checkbox" id="renderer-rule-enabled" checked> 启用此规则</label>
-               <!-- 新增：优先级输入框 -->
+               <!-- 优先级输入框 -->
                <label style="margin-left: 15px;">优先级: <input type="number" id="renderer-rule-priority" value="50" style="width: 60px; padding: 5px; border-radius: 6px; border: 1px solid #ddd;"></label>
             </div>
         </div>
     </div>
-    <!-- END: 修改“其他选项”部分 -->
+    
+    <!-- ▼▼▼ 新增的功能开关 ▼▼▼ -->
+    <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; background: #fff8fa; padding: 10px; border-radius: 8px; border: 1px solid #fce4ec;">
+        <div style="display: flex; flex-direction: column;">
+            <label for="renderer-rule-remove-context" style="margin:0; font-weight: 600; color: var(--secondary-color);">渲染时从上下文删除</label>
+            <span style="font-size: 12px; color: #999;">开启后，匹配此规则的部分将不会发送给AI，仅在前端显示。</span>
+        </div>
+        <input type="checkbox" id="renderer-rule-remove-context" style="width: auto; height: 20px;">
+    </div>
+    <!-- ▲▲▲ 新增结束 ▲▲▲ -->
+
             <div class="form-group">
                 <label>绑定角色 (规则仅对选中的角色生效)</label>
                 <div id="renderer-char-binding-list" class="char-binding-list"></div>
