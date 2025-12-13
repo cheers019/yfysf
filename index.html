@@ -15727,6 +15727,8 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
 
 // --- 你的主函数 getAiReply ---
 // --- 你的主函数 getAiReply (已添加上下文清洗逻辑) ---
+// START: 终极修正版 getAiReply (彻底移除被清洗的消息)
+// START: 终极修正版 V2 getAiReply (使用占位符防止AI重发)
 async function getAiReply() {
     // 1. 拉黑检测
     if (currentChatType === 'private') {
@@ -15783,57 +15785,73 @@ async function getAiReply() {
         }
 
         // --- 准备历史记录 (过滤掉 system 消息) ---
-        const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role !== 'system');
+        const rawHistory = chat.history.slice(-chat.maxMemory).filter(msg => msg.role !== 'system');
 
         // ==========================================
-        // ★★★ 新增：上下文清洗逻辑 (渲染时从上下文删除) ★★★
+        // ★★★ 核心修复：占位符清洗逻辑 ★★★
         // ==========================================
         
         // 1. 找出所有启用了“从上下文删除”的有效规则
-        // 确保规则是启用的(enabled)，且勾选了删除开关(removeFromContext)，且正则表达式不为空
         const rulesToRemove = (db.renderers || []).filter(r => r.enabled && r.removeFromContext && r.regex);
-
-        // 2. 如果有这样的规则，就遍历历史记录进行清洗
-        const cleanedHistorySlice = historySlice.map(msg => {
-            let contentToClean = msg.content;
+        
+        // 2. 清洗并过滤消息
+        const cleanedHistorySlice = rawHistory.reduce((acc, msg) => {
+            let contentToClean = msg.content || "";
+            let wasCleaned = false; // 标记是否被清洗过
             
-            // 如果没有要清洗的规则，直接返回原内容
-            if (rulesToRemove.length === 0) return msg;
+            // 如果有规则，尝试清洗
+            if (rulesToRemove.length > 0) {
+                rulesToRemove.forEach(rule => {
+                    const msgScope = msg.role === 'user' ? 'user' : 'ai';
+                    
+                    // 检查 scope 和 character binding
+                    if (rule.scope && !rule.scope.includes(msgScope)) return;
+                    if (rule.characterIds && rule.characterIds.length > 0 && !rule.characterIds.includes(chat.id)) return;
 
-            // 遍历每一条规则
-            rulesToRemove.forEach(rule => {
-                // 检查规则是否适用于当前角色 (role: 'user' 或 'assistant')
-                // 这里的 msg.role 是 OpenAI 格式的 role
-                // 我们的规则 scope 是 'user' 或 'ai'
-                const msgScope = msg.role === 'user' ? 'user' : 'ai';
-                
-                // 检查 Scope 是否匹配
-                if (rule.scope && !rule.scope.includes(msgScope)) return;
+                    try {
+                        const flags = (rule.flags || ['g']).join('');
+                        const regex = new RegExp(rule.regex, flags);
+                        
+                        // 检查是否匹配
+                        if (regex.test(contentToClean)) {
+                            // 执行替换
+                            contentToClean = contentToClean.replace(regex, '');
+                            wasCleaned = true; // 标记发生了清洗
+                        }
+                    } catch (e) {
+                        console.warn(`清洗规则 "${rule.name}" 执行出错:`, e);
+                    }
+                });
+            }
 
-                // 检查 Character Binding 是否匹配 (如果规则绑定了特定角色)
-                if (rule.characterIds && rule.characterIds.length > 0 && !rule.characterIds.includes(chat.id)) return;
-
-                try {
-                    const flags = (rule.flags || ['g']).join('');
-                    const regex = new RegExp(rule.regex, flags);
-                    // 将匹配到的部分替换为空字符串
-                    contentToClean = contentToClean.replace(regex, '');
-                } catch (e) {
-                    console.warn(`清洗规则 "${rule.name}" 执行出错:`, e);
+            // 3. 关键修改：如果被清洗过，且内容变为空，则保留一个“占位符”
+            // 这样AI就知道“我刚才已经回复过了”，就不会傻傻地重发了
+            const isImageMsg = msg.parts && msg.parts.some(p => p.type === 'image');
+            
+            if (!isImageMsg && (!contentToClean || contentToClean.trim() === "")) {
+                if (wasCleaned) {
+                    // 如果是因为清洗变空的，填入占位符
+                    // 这里用一个对AI来说毫无意义但能占位的符号，比如 "." 或者 "[已发送渲染内容]"
+                    // 建议使用 "[特殊内容已隐藏]"，这能暗示AI这里有过东西，但不用管它
+                    contentToClean = "[特殊内容已隐藏]"; 
+                    console.log(`[渲染器] 消息清洗后为空，已替换为占位符。原ID: ${msg.id}`);
+                } else {
+                    // 如果原本就是空的（极少见），则不处理或丢弃
+                     return acc; 
                 }
-            });
+            }
 
-            // 返回一个新的消息对象，内容是清洗过的
-            // 只有当内容不为空时才保留（或者保留空字符串也可以，看API是否接受）
-            // 这里我们保留原结构，只是替换 content
-            return { ...msg, content: contentToClean };
-        });
+            acc.push({ ...msg, content: contentToClean });
+            return acc;
+        }, []);
 
         // ==========================================
         // ★★★ 清洗逻辑结束 ★★★
         // ==========================================
 
-        // --- [特色功能 1]：注入 AI 空间 (POV) 后台记忆 ---
+        // --- 下面是各种注入逻辑 (保持不变) ---
+
+        // AI 空间 (POV) 后台记忆
         try {
             if (currentChatType === 'private' && chat.povCache && chat.povCache.conversations) {
                 const conversations = Object.values(chat.povCache.conversations);
@@ -15851,7 +15869,6 @@ async function getAiReply() {
                         }
                         const memoryText = memorySnippet.map(msg => `${msg.sender}: ${msg.content}`).join('\n');
                         const contextMessageContent = `[system: 这是你最近在后台和“${otherPartyName}”的一段对话回顾，发生在我与你当前对话之前。你需要参考它来记起最近发生的事，并在与我的对话中自然地体现出来。\n--- 对话回顾开始 ---\n${memoryText}\n--- 对话回顾结束 ---]`;
-                        // 注意：这里 push 到 cleanedHistorySlice
                         cleanedHistorySlice.push({
                             role: 'user',
                             content: contextMessageContent,
@@ -15860,13 +15877,10 @@ async function getAiReply() {
                     }
                 }
             }
-        } catch (error) {
-            console.error("注入AI后台聊天记忆时出错:", error);
-        }
+        } catch (error) { console.error("注入AI后台聊天记忆时出错:", error); }
 
-        // --- [特色功能 2]：注入论坛帖子回忆 ---
+        // 论坛帖子回忆
         if (currentChatType === 'private') {
-            // 使用清洗后的最后一条消息来判断
             const lastUserMessage = cleanedHistorySlice[cleanedHistorySlice.length - 1]?.content;
             if (lastUserMessage && /帖子|论坛|分享/.test(lastUserMessage) && typeof forumCache !== 'undefined') {
                 let latestUserPost = null;
@@ -15883,12 +15897,11 @@ async function getAiReply() {
                         content: postContext,
                         parts: [{ type: 'text', text: postContext }]
                     });
-                    showToast('AI正在回忆您的帖子...');
                 }
             }
         }
 
-        // --- [特色功能 3]：注入动态 (Moments) ---
+        // 动态 (Moments)
         try {
             const character = chat;
             if (typeof getPendingMomentsForRole === 'function') {
@@ -15908,9 +15921,7 @@ async function getAiReply() {
                     });
                 }
             }
-        } catch (e) {
-            console.warn('attach pending moments failed', e);
-        }
+        } catch (e) { console.warn('attach pending moments failed', e); }
 
         // --- 5. 构建请求体 (使用 cleanedHistorySlice) ---
         const processedHistory = cleanedHistorySlice.map(msg => {
@@ -15969,7 +15980,6 @@ async function getAiReply() {
                         { inline_data: { mime_type: msg.mimeType, data: msg.data } }
                     ];
                 } else {
-                    // Gemini 对空内容很敏感，如果清洗后为空，给一个空格
                     let textVal = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
                     if (!textVal || textVal.trim() === "") textVal = " "; 
                     parts = [{ text: textVal }];
@@ -16030,7 +16040,6 @@ async function getAiReply() {
 
             if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`);
             
-            // 使用原有的流式处理函数
             await processStream(response, chat, provider);
         }
 
@@ -16053,8 +16062,6 @@ async function getAiReply() {
         if (typingIndicator) typingIndicator.style.display = 'none';
     }
 }
-
-
 
 
       // --- 新代码开始 ---
@@ -16236,7 +16243,7 @@ async function processAiCommands(fullResponse, chat) {
         else if (typeof window.renderMomentsSafe === 'function') try { await window.renderMomentsSafe(); } catch (e) {} 
     }
     
-// ▼▼▼ 核心调整：100句门槛，70%概率 ▼▼▼
+// ▼▼▼ 核心调整：100句门槛，40%概率 ▼▼▼
     if (currentChatType === 'private') {
         const character = chat;
         // 计数器加 1
@@ -16244,9 +16251,9 @@ async function processAiCommands(fullResponse, chat) {
         
         // 这里的逻辑是：
         // 1. 只有当积攒的消息数 >= 100 时才尝试触发
-        // 2. 并且 Math.random() < 0.7 (即 70% 的概率会写)
+        // 2. 并且 Math.random() < 0.4 (即 40% 的概率会写)
         if (character.messageCountSinceLastDiary >= 100 && Math.random() < 0.4) {
-            console.log(`[自动触发] 角色 "${character.remarkName}" 已聊满100句，命中70%概率，开始写日记...`);
+            console.log(`[自动触发] 角色 "${character.remarkName}" 已聊满100句，命中40%概率，开始写日记...`);
             generateDiaryEntry(character.id); 
         }
     }
@@ -16652,7 +16659,7 @@ async function processStream(response, chat, apiType) {
         // 自动日记逻辑 (完整保留)
         if (chat.members === undefined) { 
             chat.messageCountSinceLastDiary = (chat.messageCountSinceLastDiary || 0) + 1;
-            if (chat.messageCountSinceLastDiary >= 100 && Math.random() < 0.7) {
+            if (chat.messageCountSinceLastDiary >= 100 && Math.random() < 0.4) {
                 generateDiaryEntry(chat.id);
             }
         }
