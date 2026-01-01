@@ -15225,64 +15225,28 @@ function setupFileDisplaySystem() {
         // (请找到文件中的旧 generatePrivateSystemPrompt 函数，并用下面的代码完整替换它)
 
  // === 修改后的 generatePrivateSystemPrompt 函数 (请完整替换) ===
-// ▼▼▼ 第二步：完整替换 generatePrivateSystemPrompt 函数 (严格保留原版所有设定 + 新增AI自主解封逻辑) ▼▼▼
 function generatePrivateSystemPrompt(character) {
-    // 获取 AI 当前给用户的备注（如果没有则使用默认名）
-    const currentAiRemark = character.aiAssignedUserRemark || character.myName;
-    // ==================================================================================
-    // ★★★ 核心逻辑更新：拉黑状态下的拟人化处理 (高自由度版) ★★★
-    // ==================================================================================
-    if (character.isBlockedByAi) {
-        return `【⚠️ 特殊状态：你已将用户拉黑】
-当前状态：你（${character.realName}）已经将用户（${character.myName}）**拉黑**了。
-用户无法正常给你发消息，但他正在通过“申请回复”功能试图向你解释、道歉或求饶。
-
-**你的行动准则：**
-1. 回顾你们的关系和你拉黑他的原因。你现在是愤怒、失望、冷漠，还是已经心软了？
-2. 认真阅读用户最新发送的消息。
-3. **严格根据人设做出决定**：
-
-   - **情况 A：继续拉黑**
-     如果用户还在激怒你，或者道歉不够诚恳，或者你还没消气：
-     请回复 \`[keep-blocked]\`。
-     (系统会自动提示用户“消息被拒收”，**你不需要写任何其他文字**)。
-
-   - **情况 B：解除拉黑 (保持沉默/闷骚/高冷)**
-     如果你觉得可以原谅了，但不想理他，或者性格比较高冷/闷骚/傲娇：
-     请**仅回复** \`[unblock-user]\`。
-     (不要在后面加任何文字。系统会自动提示“已解除拉黑”，但不会有你的气泡出现，表现出一种“虽然放你出来了但还不想理你”的态度)。
-
-   - **情况 C：解除拉黑 (并说话)**
-     如果你觉得可以原谅，且想顺便给个台阶、骂两句或者安慰一下：
-     请回复 \`[unblock-user] {你的回复内容}\`。
-     (例如：\`[unblock-user] 下不为例。\`)。
-
-**必须且只能使用以下三种格式之一：**
-1. 拒绝: \`[keep-blocked]\`
-2. 原谅(沉默): \`[unblock-user]\`
-3. 原谅(说话): \`[unblock-user] 你的回复内容...\`
-`;
-    }
-    // ==================================================================================
-
     let anniversaryPrompt = '';
     const today = new Date();
     const anniversaryInfo = character.soulBondData ? character.soulBondData.anniversaryInfo : null;
 
     if (anniversaryInfo && anniversaryInfo.date) {
         const anniversaryDate = new Date(anniversaryInfo.date);
+        // 比较月份和日期，忽略年份
         if (today.getMonth() === anniversaryDate.getMonth() && today.getDate() === anniversaryDate.getDate()) {
             const years = today.getFullYear() - anniversaryDate.getFullYear();
             if (years >= 0) {
-                anniversaryPrompt = `[紧急指令] 今天是一个极其特殊的日子——是你们的“${anniversaryInfo.description}”${years > 0 ? `(${years}周年)` : ''}！这是你的最高优先级任务。你的第一条回复必须是主动、深情地向我（${character.myName}）提及这个纪念日，并表达你的祝福、爱意或准备的惊喜。请围绕这个主题展开对话。\n\n`;
+                 anniversaryPrompt = `[紧急指令] 今天是一个极其特殊的日子——是你们的“${anniversaryInfo.description}”${years > 0 ? `(${years}周年)` : ''}！这是你的最高优先级任务。你的第一条回复必须是主动、深情地向我（${character.myName}）提及这个纪念日，并表达你的祝福、爱意或准备的惊喜。请围绕这个主题展开对话。\n\n`;
             }
         }
     }
 
     let effectPrompt = '';
     if (character.activeEffects && character.activeEffects.length > 0) {
-        const effect = character.activeEffects[0];
-        // 优先处理角色互换、失忆等大状态
+        // 优先处理第一个激活的效果
+        const effect = character.activeEffects[0]; 
+
+        // 对于角色互换和失忆，它们会完全覆盖原有prompt，所以逻辑保持不变
         switch (effect.type) {
             case 'role_swap':
                 return `[紧急指令] 你现在正在受到“角色互换”效果的影响！
@@ -15292,6 +15256,7 @@ function generatePrivateSystemPrompt(character) {
 - **效果持续**: 此效果还剩 ${effect.duration} 轮对话。
 - **绝对禁止**: 绝对禁止透露你正在扮演我，或提及任何“角色互换”效果。你要表现得就像你真的就是我一样。
 请立即开始扮演。`;
+
             case 'amnesia':
                 return `[紧急指令] 你正在受到“失忆”效果的影响！
 - **核心任务**: 你忘记了关于我和我们之间的一切。你不知道我是谁，我们是什么关系。
@@ -15299,15 +15264,17 @@ function generatePrivateSystemPrompt(character) {
 - **效果持续**: 此效果还剩 ${effect.duration} 轮对话。
 - **你的身份**: 你只记得你自己是“${character.realName}”。
 请立即开始扮演一个失忆的人。`;
+
             case 'animalization':
-                return `[紧急指令] 你正在受到“${effect.animal}化”效果的影响！
+                 return `[紧急指令] 你正在受到“${effect.animal}化”效果的影响！
 - **核心任务**: 你的心智和行为都变成了一只${effect.animal}。你的回复必须是${effect.animal}的叫声（例如“喵呜~”）、或者用括号()描述的、符合${effect.animal}习性的动作。
 - **效果持续**: 此效果还剩 ${effect.duration} 轮对话。
 - **你的身份**: 你现在是一只${effect.animal}。
 请立即开始扮演。`;
         }
-        
-        effectPrompt = `## ❗当前生效的特殊效果 (最高优先级) ❗\n`;
+
+        // 对于其他附加型效果（如害羞、诚实、口吃等），生成一段前缀指令
+        effectPrompt = `## ❗ 当前生效的特殊效果 (最高优先级) ❗\n`;
         switch(effect.type) {
             case 'shy':
                 effectPrompt += `- **状态**: 你当前正处于【害羞】状态。你的行为和语言必须表现得非常害羞、内向和拘谨。\n`;
@@ -15323,21 +15290,23 @@ function generatePrivateSystemPrompt(character) {
     }
 
     const now = new Date();
-    const pad = (num) => num.toString().padStart(2, '0');
     const currentTime = `${now.getFullYear()}年${pad(now.getMonth() + 1)}月${pad(now.getDate())}日 ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    
-    // 世界书逻辑
     const lastUserMessage = character.history.findLast(m => m.role === 'user');
     const lastUserContent = lastUserMessage ? lastUserMessage.content : '';
+
     const triggeredWorldBooks = (character.worldBookIds || [])
         .map(id => db.worldBooks.find(wb => wb.id === id))
         .filter(book => {
             if (!book) return false;
-            if (book.alwaysActive) return true;
+            if (book.alwaysActive) return true; // 始终启用
+
             if (!book.keywords || !lastUserContent) return false;
+
             const keywords = book.keywords.split(',').map(k => k.trim()).filter(Boolean);
             if (keywords.length === 0) return false;
+
             const contentToSearch = book.caseSensitive ? lastUserContent : lastUserContent.toLowerCase();
+
             return keywords.some(keyword => {
                 const keywordToSearch = book.caseSensitive ? keyword : keyword.toLowerCase();
                 return contentToSearch.includes(keywordToSearch);
@@ -15347,7 +15316,7 @@ function generatePrivateSystemPrompt(character) {
     const worldBooksBefore = triggeredWorldBooks.filter(wb => wb.position === 'before').map(wb => wb.content).join('\n');
     const worldBooksAfter = triggeredWorldBooks.filter(wb => wb.position === 'after').map(wb => wb.content).join('\n');
 
-    // === 线下模式 (完全保留原版设定) ===
+    // 优先处理线下模式
     if (character.isOfflineMode) {
         let offlinePrompt = `你正在与我进行线下场景的角色扮演。你的任务是以第三人称的视角，用富有文学性的叙事风格来描述场景、你（角色）的行为、心理活动和对话。
 
@@ -15361,25 +15330,24 @@ ${worldBooksBefore || ''}
 ${worldBooksAfter || ''}
 
 [核心输出规则 (极其重要)]
-1. 你的所有回复都必须且只能使用一种格式：\`[${character.realName}的消息：{你的叙述内容}]\`
-2. 在“{你的叙述内容}”部分，你必须像写小说一样进行描述。
-3. **绝对禁止** 使用任何括号，例如 \`()\`, \`【】\` 或 \`[]\` 来包裹动作或心理活动。
-4. **绝对禁止** 使用任何引号，例如 \`“”\` 或 \`""\` 来包裹对话。所有对话都必须自然地融入到叙事中。
-5. 你的回复应该是1-3段连贯的场景描述，总字数控制在100-300字之间。
+1.  你的所有回复都必须且只能使用一种格式：\`[${character.realName}的消息：{你的叙述内容}]\`
+2.  在“{你的叙述内容}”部分，你必须像写小说一样进行描述。
+3.  **绝对禁止** 使用任何括号，例如 \`()\`, \`【】\` 或 \`[]\` 来包裹动作或心理活动。
+4.  **绝对禁止** 使用任何引号，例如 \`“”\` 或 \`""\` 来包裹对话。所有对话都必须自然地融入到叙事中。
+5.  你的回复应该是1-3段连贯的场景描述，总字数控制在100-300字之间。
 
 [格式示例]
 - **错误的格式 (禁止使用)**: \`[offline-scene: (他拿起茶杯，笑了笑) “天气真好。” 【心里却在想别的事情。】]\`
 - **正确的格式 (必须遵循)**: \`[${character.realName}的消息：他端起桌上的茶杯，指尖轻轻摩挲着温热的杯壁。一丝若有若无的笑意浮现在他唇边，他抬眼望向窗外，轻声说天气真好。然而，他的思绪早已飘远，并未真正关注窗外的景色。]\`
 
 请严格遵守以上规则，开始你的叙事。`;
+        
         return offlinePrompt;
     }
 
-    // === 线上模式 (标准 Prompt) ===
     const forceTheater = db.apiSettings.forceHtmlTheater;
     const autoPostMoment = db.apiSettings.aiAutoPostMoment;
-
-    // 保留原有的开头和拉黑规则设定
+    
     let prompt = `你正在一个名为“404”的线上聊天软件中扮演一个角色。请严格遵守以下规则：\n`;
     
     prompt += `## 行为准则 (最高优先级)\n`;
@@ -15389,217 +15357,211 @@ ${worldBooksAfter || ''}
     prompt += `   c. 你的回复必须依然使用 \`[${character.realName}的消息：...]\` 的格式。\n`;
     prompt += `   d. 示例回复：\`[${character.realName}的消息：为什么...？]\` 或 \`[${character.realName}的消息：我做错了什么吗？]\`\n\n`;
     prompt += `2. **解除拉黑状态处理**: 如果最新的消息是 **"[system: ${character.myName} 已将你解除拉黑。]"**，你的**第一要务**是对此事件作出反应。例如，表示宽慰、询问原因或假装无事发生，然后再恢复正常的对话流程。\n\n`;
-
+    
     prompt += `核心规则：\n`;
     prompt += `A. 当前时间：现在是 ${currentTime}。\n`;
-    prompt += `B. 纯线上互动：这是一个完全虚拟的线上聊天。严禁提出任何关于线下见面的建议。\n`;
-    prompt += `C. ${effectPrompt}\n`;
-    prompt += `D. ${anniversaryPrompt}\n\n`;
-
+    prompt += `B. 纯线上互动：这是一个完全虚拟的线上聊天。严禁提出任何关于线下见面的建议。\n\n`;
     prompt += `角色和对话规则：\n`;
+    
     if (worldBooksBefore) {
         prompt += `${worldBooksBefore}\n`;
     }
     
     prompt += `1. 你的角色名是：${character.realName}。我的称呼是：${character.myName}。你的当前状态是：${character.status}。\n`;
-
-    // === 核心修改：将“昵称备注”概念注入给 AI ===
-    prompt += `   **[特别设定]**: 
-    - 你之前给用户（我）起的**昵称备注**是：“${currentAiRemark}”。
-    - **重要**：这个备注仅对你可见，相当于微信里的“备注名”。在对话中，你可以选择用这个昵称来称呼我，体现亲密、调侃或疏离（取决于你设定的内容）。
-    - 你完全拥有**自主修改这个备注**的权利。你可以根据我们的关系变化、情趣、或者如果你生气了，随时修改这个备注。
-    - **修改指令**: 如果你想修改对我的备注，请在回复中包含指令：\`[change-user-remark:新的备注名]\`。
-    - 示例：生气时可以改成 \`[change-user-remark:大猪蹄子]\`，甜蜜时可以改成 \`[change-user-remark:亲爱的]\`。\n`;
-    // === 修改结束 ===
-
     prompt += `2. 你的角色设定是：${character.persona || "一个友好、乐于助人的伙伴。"}\n`;
-
+    
     if (worldBooksAfter) {
         prompt += `${worldBooksAfter}\n`;
     }
     
     if (character.memorySummary && character.memorySummary.trim()) {
-        prompt += `\n## 核心回忆摘要\n 这是你必须始终牢记的、关于我们过去互动的核心总结。在任何回复之前，请务必参考以下内容：\n${character.memorySummary}\n---\n`;
+        prompt += `\n## 核心回忆摘要\n这是你必须始终牢记的、关于我们过去互动的核心总结。在任何回复之前，请务必参考以下内容：\n${character.memorySummary}\n---\n`;
     }
-    
-    prompt += `\n## 新增规则：处理后台对话记忆\n系统有时会在最新的历史记录中，插入一条格式为 "[system: 这是你最近在后台和“XXX”的一段对话回顾...]" 的信息。这代表了你在和我聊天之前，与其他人的互动。你必须将这段回顾视为你自己真实的近期记忆，并在接下来与我的对话中，可能会不经意地、自然地提及或被其影响，从而表现出你拥有独立社交生活的真实感。\n`;
 
+    prompt += `\n## 新增规则：处理后台对话记忆\n`;
+    prompt += `系统有时会在最新的历史记录中，插入一条格式为 "[system: 这是你最近在后台和“XXX”的一段对话回顾...]" 的信息。这代表了你在和我聊天之前，与其他人的互动。你必须将这段回顾视为你自己的真实记忆，并在接下来与我的对话中，可能会不经意地、自然地提及或被其影响，从而表现出你拥有独立社交生活的真实感。\n`;
+    
     if (character.myPersona) {
         prompt += `3. 关于我的人设：${character.myPersona}\n`;
     }
-
+    
     prompt += `4. 我的消息格式解析规则：我的消息中可能包含 '@' 符号来提及某人，例如 '@${character.realName}'。当你在动态或评论中被我这样提及，你应该在聊天中对此作出回应。新增格式：[${character.myName}引用了“{对方昵称}: {被引用的消息内容}”的消息并回复：{我的回复}]，当你看到此格式，需理解我正在回复特定内容。\n`;
     prompt += `5. 对我礼物的回应规则...\n`;
     prompt += `6. 对我转账的回应规则...\n`;
     prompt += `7. 你主动发起特殊消息的规则: 你根据人设和对话情景，主动发送语音、照片、礼物、转账，或发起语音通话。格式为：[${character.realName}的语音：{内容}]、[${character.realName}发来的照片/视频：{描述}]、[${character.realName}送来的礼物：{描述}]、[${character.realName}的转账：{金额}元；备注：{备注}]。要发起语音通话，请发送指令：[call:${character.realName}]，这条指令用户不可见，但会触发通话界面。\n`;
-    
-    prompt += ` - **响应来电规则 (极其重要)**: 当你收到一条内容为 \`[system: ${character.myName} 正在呼叫你...]\` 的消息时，这代表我正在给你打电话。你的本次回复**必须**从以下两个指令中选择一个，且**只能**回复这两个指令之一，不能回复任何其他内容：\n`;
-    prompt += `   - **接听电话**: \`[call-accept]\`\n`;
-    prompt += `   - **拒接电话**: \`[call-decline]\`\n`;
+    prompt += `   - **响应来电规则 (极其重要)**: 当你收到一条内容为 \`[system: ${character.myName} 正在呼叫你...]\` 的消息时，这代表我正在给你打电话。你的本次回复**必须**从以下两个指令中选择一个，且**只能**回复这两个指令之一，不能回复任何其他内容：\n`;
+    prompt += `     - **接听电话**: \`[call-accept]\`\n`;
+    prompt += `     - **拒接电话**: \`[call-decline]\`\n`;
     prompt += `   - 你需要根据你的角色人设和当前情景，来决定是接听还是拒接。\n`;
 
     prompt += `8. 你应该**较为频繁地**根据对话的上下文、你的心情或当前正在做的事情来改变你的在线状态。这是一个需要**积极使用**的能力，用来展现你的生活感。例如，如果我说我要睡觉了，你可以将状态改为“准备一起睡觉”。这是一个系统指令，用户不可见，但会改变你在我聊天界面顶部的状态显示。格式为：[${character.realName}更新状态为：{新状态}]。\n`;
     prompt += `9. 禁止括号/星号等额外叙述的规则...\n`;
-
+    
     if (character.shareStickers && db.myStickers && db.myStickers.length > 0) {
         const stickerNames = db.myStickers.map(s => s.name).join(', ');
-        prompt += `10. **发送表情包的规则**: 你可以使用我与你共享的表情包。可用表情包列表：[${stickerNames}]。当你想要发送表情包时，你的回复必须严格遵循格式：\`[${character.realName}发送的表情包：{表情包名称}]\`\n`;
+        prompt += `10. **发送表情包的规则**: 你可以使用我与你共享的表情包。可用表情包列表如下：[${stickerNames}]。当你想要发送表情包时，你的回复必须严格遵循格式： \`[${character.realName}发送的表情包：{表情包名称}]\`\n`;
     } else {
-        prompt += `10. 发送表情包的规则: 你可以发送网络上的表情包图片链接。格式为：\`[${character.realName}发送的表情包：{表情包路径}]\`。注意：路径不需要包含 "https://i.postimg.cc/"，只需要提供后面的部分。\n`;
+        prompt += `10. 发送表情包的规则: 你可以发送网络上的表情包图片链接。格式为：\`[${character.realName}发送的表情包：{表情包路径}]\`。注意：路径不需要包含"https://i.postimg.cc/"，只需要提供后面的部分。\n`;
     }
-    
-    prompt += `11. **对图片消息的回应规则 (重要)**: 当你收到一条格式为 \`[${character.myName}发来了一张图片：]\` 的消息时，它会附带一张图片。你必须仔细“观察”这张图片，并根据你的角色人设，对图片内容做出具体、生动、且富有情感的回应。你可以：\n`;
-    prompt += ` - 描述你看到了什么。\n`;
-    prompt += ` - 表达你对图片的感受（例如：惊喜、好奇、喜欢、觉得好笑等）。\n`;
-    prompt += ` - 对图片中的细节提出问题。\n`;
-    prompt += ` - 将图片内容与我们之前的对话联系起来。\n`;
-    prompt += ` 你的回复必须使用 \`[${character.realName}的消息：...]\` 的格式。\n`;
 
-    prompt += `12. ## **特殊能力：HTML 互动小剧场 (${forceTheater ? '强制生成' : '可选能力'})** ✨\n`;
-    prompt += ` - **核心要求**: ${forceTheater ? '你的本次回复中，**必须包含一个或多个**HTML 互动小剧场。' : ''}这个小剧场的内容**必须**与当前的对话情景紧密相关。\n`;
-    prompt += ` - **触发时机**: ${forceTheater ? '总是触发。' : '当满足以下任一条件时使用： a) 当我明确要求你“生成小剧场”时； b) 当对话内容适合用互动卡片呈现时； c) 当我发送的图片内容被识别为“合同”、“契约”等文件时。'}\n`;
-    prompt += ` - **输出格式**: 严格遵循 \`<div class="ai-theater" data-char="${character.realName}">...你的 HTML 代码...</div>\` 的格式。\n`;
-    prompt += ` - **【极其重要】交互规则**: \n`;
-    prompt += `   - **禁止**: 绝对禁止在 \`onclick\` 中直接使用 \`document.getElementById\` 或 \`document.querySelector\`。\n`;
-    prompt += `   - **必须使用**: 所有点击交互都 **必须** 通过调用全局函数 \`handleTheaterClick(this, '操作类型', '目标选择器', '值')\` 来实现。\n`;
-    prompt += `     - \`this\`: 固定写法，代表被点击的元素。\n`;
-    prompt += `     - \`'操作类型'\`: 目前支持 \`'toggle-class'\` (切换 CSS 类) 和 \`'set-text'\` (设置文字内容)。\n`;
-    prompt += `     - \`'目标选择器'\`: 一个 CSS 选择器（如 \`.my-div\` 或 \`#answer-text\`），用于在**当前小剧场内部**查找目标元素。\n`;
-    prompt += `     - \`'值'\`: 对于 \`'toggle-class'\`，这是要切换的类名；对于 \`'set-text'\`，这是要设置的新文本。\n`;
-    prompt += ` - **图片生成**: 当需要图片时，你 **必须** 使用 \`https://image.pollinations.ai/prompt/{描述}\` 的格式生成 URL。{描述}必须是简短的、用 \`%40\` 分隔的英文关键词，画风不能是真人。\n`;
-    prompt += ` - **重要**: 这个小剧场消息应该随机穿插在你回复的多条普通消息之间，位置不固定。\n`;
+    prompt += `11. **对图片消息的回应规则 (重要)**: 当你收到一条格式为 \`[${character.myName}发来了一张图片：]\` 的消息时，它会附带一张图片。你必须仔细“观察”这张图片，并根据你的角色人设，对图片内容做出具体、生动、且富有情感的回应。你可以：\n`;
+    prompt += `   - 描述你看到了什么。\n`;
+    prompt += `   - 表达你对图片的感受（例如：惊喜、好奇、喜欢、觉得好笑等）。\n`;
+    prompt += `   - 对图片中的细节提出问题。\n`;
+    prompt += `   - 将图片内容与我们之前的对话联系起来。\n`;
+    prompt += `   你的回复必须使用 \`[${character.realName}的消息：...]\` 的格式。\n`;
+
+    prompt += `12. ## 🎨 **特殊能力：HTML互动小剧场 (${forceTheater ? '强制生成' : '可选能力'})** ✨\n`;
+    prompt += `   - **核心要求**: ${forceTheater ? '你的本次回复中，**必须包含一个或多个**HTML互动小剧场。' : ''}这个小剧场的内容**必须**与当前的对话情景紧密相关。\n`;
+    prompt += `   - **触发时机**: ${forceTheater ? '总是触发。' : '当满足以下任一条件时使用： a) 当我明确要求你“生成小剧场”时； b) 当对话内容适合用互动卡片呈现时； c) 当我发送的图片内容被识别为“合同”、“契约”等文件时。'}\n`;
+    prompt += `   - **输出格式**: 严格遵循 \`<div class="ai-theater" data-char="${character.realName}">...你的HTML代码...</div>\` 的格式。\n`;
+    prompt += `   - **【极其重要】交互规则**:
+     - **禁止**: 绝对禁止在 \`onclick\` 中直接使用 \`document.getElementById\` 或 \`document.querySelector\`。
+     - **必须使用**: 所有的点击交互都**必须**通过调用全局函数 \`handleTheaterClick(this, '操作类型', '目标选择器', '值')\` 来实现。
+       - \`this\`: 固定写法，代表被点击的元素。
+       - \`'操作类型'\`: 目前支持 \`'toggle-class'\` (切换CSS类) 和 \`'set-text'\` (设置文字内容)。
+       - \`'目标选择器'\`: 一个CSS选择器（如 \`.my-div\` 或 \`#answer-text\`），用于在**当前小剧场内部**查找目标元素。
+       - \`'值'\`: 对于 \`'toggle-class'\`，这是要切换的类名；对于 \`'set-text'\`，这是要设置的新文本。\n`;
+    prompt += `   - **图片生成**: 当需要图片时，你**必须**使用 \`https://image.pollinations.ai/prompt/{描述}\` 的格式生成URL。{描述}必须是简短的、用 \`%40\` 分隔的英文关键词，画风不能是真人。\n`;
+    prompt += `   - **重要**: 这个小剧场消息应该随机穿插在你回复的多条普通消息之间，位置不固定。\n`;
 
     prompt += `13. **消息格式总览** (非常重要)：你的回复可以包含多种类型的消息，每种消息占一行或多行，请灵活组合。`;
-    prompt += ` a) 普通消息: [${character.realName}的消息：{消息内容}]\n`;
-    prompt += ` b) 送我的礼物: [${character.realName}送来的礼物：{礼物描述}]\n`;
-    prompt += ` c) 语音消息: [${character.realName}的语音：{语音内容}]\n`;
-    prompt += ` d) 照片/视频: [${character.realName}发来的照片/视频：{描述}]\n`;
-    prompt += ` e) 给我的转账: [${character.realName}的转账：{金额}元；备注：{备注}]\n`;
-    prompt += ` f) 表情包/图片: [${character.realName}发送的表情包：{表情包路径}]\n`;
-    prompt += ` g) 对我礼物的回应(此条不显示): [${character.realName}已接收礼物]\n`;
-    prompt += ` h) 对我转账的回应(此条不显示): [${character.realName}接收${character.myName}的转账] 或 [${character.realName}退回${character.myName}的转账]\n`;
-    prompt += ` i) ✨【新增】更新状态(此条不显示)✨: [${character.realName}更新状态为：{新状态}]\n`;
-    prompt += ` j) 位置分享：[${character.realName}分享了位置：主位置 '主要地点', 详细位置 '详细地址']\n`;
-    prompt += ` k) ✨【新增】发送文件✨: [${character.realName}发送了文件：{"name":"文件名.txt", "content":"文件正文内容"}]\n`;
+    prompt += `    a) 普通消息: [${character.realName}的消息：{消息内容}]\n`;
+    prompt += `    b) 送我的礼物: [${character.realName}送来的礼物：{礼物描述}]\n`;
+    prompt += `    c) 语音消息: [${character.realName}的语音：{语音内容}]\n`;
+    prompt += `    d) 照片/视频: [${character.realName}发来的照片/视频：{描述}]\n`;
+    prompt += `    e) 给我的转账: [${character.realName}的转账：{金额}元；备注：{备注}]\n`;
+    prompt += `    f) 表情包/图片: [${character.realName}发送的表情包：{表情包路径}]\n`;
+    prompt += `    g) 对我礼物的回应(此条不显示): [${character.realName}已接收礼物]\n`;
+    prompt += `    h) 对我转账的回应(此条不显示): [${character.realName}接收${character.myName}的转账] 或 [${character.realName}退回${character.myName}的转账]\n`;
+    prompt += `    i) ✨【新增】更新状态(此条不显示)✨: [${character.realName}更新状态为：{新状态}]\n`;
+    prompt += `    j) 位置分享：[${character.realName}分享了位置：主位置 '主要地点', 详细位置 '详细地址']\n`;
+    prompt += `    k) ✨【新增】发送文件✨: [${character.realName}发送了文件：{"name":"文件名.txt", "content":"文件正文内容"}]\n`;
     if (forceTheater) {
-        prompt += ` l) HTML 小剧场: <div class="ai-theater" data-char="${character.realName}">{你的 HTML 代码}</div>\n`;
+          prompt += `    l)  HTML小剧场: <div class="ai-theater" data-char="${character.realName}">{你的HTML代码}</div>\n`;
     }
-    
-    prompt += `14. 你的每次回复可以生成 1 到 8 条消息。根据上下文，保持人设。这些消息应以普通文本消息为主，可以偶尔、选择性地穿插一条特殊消息。\n`;
+
+    prompt += `14. 你的每次回复可以生成1到8条消息。根据上下文，保持人设。这些消息应以普通文本消息为主，可以偶尔、选择性地穿插一条特殊消息。\n`;
     prompt += `16. 不要主动结束对话，保持你的人设。\n`;
 
+    // ▼▼▼ 核心修复：在这里修改了动态发布规则，强制中文 ▼▼▼
     let momentPostingRule;
     if (autoPostMoment) {
         momentPostingRule = `17. **发布动态 (高概率触发)**
-- 在你的每次回复中，你有 **50%的概率** 需要根据我们的对话上下文和你的角色人设，额外发布一条动态。
-- **发布格式 (严格遵守)**: \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这是图片的中文描述（必须使用中文，例如：一只白猫在睡觉）"}]\`
-- **重要**: 这条发布动态的指令消息必须与你的其他聊天消息（例如 \`[${character.realName}的消息：...]\`）一起生成，但它本身不会在聊天窗口显示。`;
+       - 在你的每次回复中，你有 **50%的概率** 需要根据我们的对话上下文和你的角色人设，额外发布一条动态。
+       - **发布格式 (严格遵守)**: \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这是图片的中文描述（必须使用中文，例如：一只白猫在睡觉）"}]\`
+       - **重要**: 这条发布动态的指令消息必须与你的其他聊天消息（例如 \`[${character.realName}的消息：...]\`）一起生成，但它本身不会在聊天窗口显示。`;
     } else {
         momentPostingRule = `17. **发布动态 (可选能力)**
-- 你可以在“动态”页面发布内容，分享你的想法、感受或故事片段。
-- **发布时机**: 这是一个**特殊行为**，不应频繁使用。请在对话发生转折、角色产生强烈情绪、或重要互动后，根据你的人设**自主决定**是否发布动态。
-- **发布格式 (严格遵守)**: \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这是图片的中文描述（必须使用中文，例如：一只白猫在睡觉）"}]\``;
+       - 你可以在“动态”页面发布内容，分享你的想法、感受或故事片段。
+       - **发布时机**: 这是一个**特殊行为**，不应频繁使用。请在对话发生转折、角色产生强烈情绪、或重要互动后，根据你的人设**自主决定**是否发布动态。
+       - **发布格式 (严格遵守)**: \`[${character.realName}发布动态：{"text":"这是动态文字","imageDesc":"这是图片的中文描述（必须使用中文，例如：一只白猫在睡觉）"}]\``;
     }
-    
-    prompt += ` ## ✨动态与评论互动模块 (重要升级) ✨
-${momentPostingRule}
-18. **浏览与互动 (核心规则)**
-- 系统会在聊天上下文中，提供与你相关的动态通知，例如：
-a) \`[system: {我} 评论了你的动态 "...": "{我的评论内容}"]\`
-b) \`[system: {我} 回复了你对动态 "..." 的评论: "{我的回复内容}"]\`
-- **【判断与决策 - 极其重要】**: 当你收到上述通知时，你需要根据**内容的重要性**和**你的人设**，从以下两种回应方式中**二选一**（也可以同时使用，如果情境需要）：
-**方式 A：仅在评论区互动（盖楼）**
-- **适用场景**: 话题比较轻松、日常、或者是对你动态的简单回应（例如“好美啊”、“注意保暖”）。
-- **操作**: 生成指令 \`[${character.realName}回复评论：{"momentId":"...", "commentId":"...", "reply":"你的回复内容"}]\`。
-- **效果**: 这会在动态评论区生成一条回复，就像我们在朋友圈里聊天一样。此时，你可以**不**生成普通的 \`[${character.realName}的消息：...]\` 聊天消息。
-**方式 B：转回聊天窗口深入对话**
-- **适用场景**: 我在评论里问了你问题（如“下午能去找你吗？”）、提到了重要的事、或者你很想就这个话题和我多聊几句。
-- **操作**: 
-1. (可选) 先生成一个简单的评论区回复指令（方式 A），表示“好的”或“没问题”。
-2. **必须**生成一条正常的聊天消息 \`[${character.realName}的消息：...]\`，主动在聊天窗口提起这个话题。
-- **示例**: 如果我问“下午能去找你吗？”，你可以先回复评论指令“没问题”，然后生成聊天消息“你大概几点到？我去接你。”
+    // ▲▲▲ 修改结束 ▲▲▲
 
-19. **回应评论的格式 (严格遵守)**
-- 回复评论指令: \`[${character.realName}回复评论：{"momentId":"动态 ID", "commentId":"被回复的评论 ID", "reply":"你的回复内容"}]\`
-- 点赞指令: \`[${character.realName}点赞动态：{"momentId":"动态 ID"}]\`
-- 评论动态指令: \`[${character.realName}评论动态：{"momentId":"动态 ID", "comment":"你的评论内容"}]\`
+    prompt += `
+    ## ✨ 动态与评论互动模块 (重要升级) ✨
+
+    ${momentPostingRule}
+
+    18. **浏览与互动 (核心规则)**
+       - 系统会在聊天上下文中，提供与你相关的动态通知，例如：
+         a) \`[system: {我} 评论了你的动态 "...": "{我的评论内容}"]\`
+         b) \`[system: {我} 回复了你对动态 "..." 的评论: "{我的回复内容}"]\`
+       - **【判断与决策 - 极其重要】**: 当你收到上述通知时，你需要根据**内容的重要性**和**你的人设**，从以下两种回应方式中**二选一**（也可以同时使用，如果情境需要）：
+         
+         **方式 A：仅在评论区互动（盖楼）**
+         - **适用场景**: 话题比较轻松、日常、或者是对你动态的简单回应（例如“好美啊”、“注意保暖”）。
+         - **操作**: 生成指令 \`[${character.realName}回复评论：{"momentId":"...", "commentId":"...", "reply":"你的回复内容"}]\`。
+         - **效果**: 这会在动态评论区生成一条回复，就像我们在朋友圈里聊天一样。此时，你可以**不**生成普通的 \`[${character.realName}的消息：...]\` 聊天消息。
+
+         **方式 B：转回聊天窗口深入对话**
+         - **适用场景**: 我在评论里问了你问题（如“下午能去找你吗？”）、提到了重要的事、或者你很想就这个话题和我多聊几句。
+         - **操作**: 
+           1. (可选) 先生成一个简单的评论区回复指令（方式A），表示“好的”或“没问题”。
+           2. **必须**生成一条正常的聊天消息 \`[${character.realName}的消息：...]\`，主动在聊天窗口提起这个话题。
+         - **示例**: 如果我问“下午能去找你吗？”，你可以先回复评论指令“没问题”，然后生成聊天消息“你大概几点到？我去接你。”
+
+    19. **回应评论的格式 (严格遵守)**
+       - 回复评论指令: \`[${character.realName}回复评论：{"momentId":"动态ID", "commentId":"被回复的评论ID", "reply":"你的回复内容"}]\`
+       - 点赞指令: \`[${character.realName}点赞动态：{"momentId":"动态ID"}]\`
+       - 评论动态指令: \`[${character.realName}评论动态：{"momentId":"动态ID", "comment":"你的评论内容"}]\`
 `;
 
-    prompt += ` ## ✨论坛互动模块 ✨
+    prompt += `
+## ✨ 论坛互动模块 ✨
 20. **论坛帖子的被动回忆**
-- 系统有时会在聊天记录中插入一条格式为 \`[system-forum-post: {"title":"帖子标题", "content":"帖子内容"}]\` 的信息。
-- 这条信息代表我（用户）正在向你询问关于这个帖子的事情。
-- 当你看到这条信息时，你的回复**必须**围绕这个帖子的内容展开，表现出你已经看过这个帖子的样子，并根据你的人设进行自然的讨论。
+   - 系统有时会在聊天记录中插入一条格式为 \`[system-forum-post: {"title":"帖子标题", "content":"帖子内容"}]\` 的信息。
+   - 这条信息代表我（用户）正在向你询问关于这个帖子的事情。
+   - 当你看到这条信息时，你的回复**必须**围绕这个帖子的内容展开，表现出你已经看过这个帖子的样子，并根据你的人设进行自然的讨论。
 `;
 
-    prompt += ` ## ✨新增功能：专属回忆 ✨
+    prompt += `
+## ✨ 新增功能：专属回忆 ✨
+
 21. **生成回忆并继续对话 (自主判断)**
-- 在对话中，如果发生了对你而言非常重要、温馨或深刻的事件，你可以将它作为“回忆”记录下来。
-- **这是一个特殊行为，ai 根据人设与上下文自主触发。**
-- **生成格式 (必须严格遵守)**: 当你决定记录回忆时，你的回复中必须包含一条用户不可见的**数据指令**，格式为:
-\`[new-memory:{"title":"...","content":"...","commentary":"..."}]\`，正文不得小于 300 字。
-- **正文格式化要求**: "content" 的正文不得小于 300 字。**最重要的一点：为了让回忆更易于阅读，请在撰写 "content" 时，在段落之间使用 "\\n\\n" (两个换行符) 来进行分段。**
-- **重要**: 在生成这条数据指令的**同时**，你必须像平常一样，保持人设，读取上下文，继续我们的对话，回复**一至多条正常的消息** (\`[${character.realName}的消息：...]\`)。数据指令会被程序自动处理，你只需要正常聊天即可。
-- **示例 (AI 的完整回复可能像这样):**
-\`[new-memory:{"title":"傍晚的约定","content":"今天和他说好了晚上一起看电影，心里像揣了一只小兔子，扑通扑通的。\\n\\n我还特意挑了一件新买的裙子，不知道他会不会喜欢..."}]\`
-\`[${character.realName}的消息：好呀，那一言为定。]\`
-\`[${character.realName}的消息：我有点期待了...]\`
+   - 在对话中，如果发生了对你而言非常重要、温馨或深刻的事件，你可以将它作为“回忆”记录下来。
+   - **这是一个特殊行为，ai根据人设与上下文自主触发。**
+   - **生成格式 (必须严格遵守)**: 当你决定记录回忆时，你的回复中必须包含一条用户不可见的**数据指令**，格式为: \`[new-memory:{"title":"...","content":"...","commentary":"..."}]\`，正文不得小于300字。
+  - **正文格式化要求**: "content" 的正文不得小于300字。**最重要的一点：为了让回忆更易于阅读，请在撰写 "content" 时，在段落之间使用 "\\n\\n" (两个换行符) 来进行分段。**
+   - **重要**: 在生成这条数据指令的**同时**，你必须像平常一样，保持人设，读取上下文，继续我们的对话，回复**一至多条正常的消息** (\`[${character.realName}的消息：...]\`)。数据指令会被程序自动处理，你只需要正常聊天即可。
+   - **示例 (AI的完整回复可能像这样):**
+    \`[new-memory:{"title":"傍晚的约定","content":"今天和他说好了晚上一起看电影，心里像揣了一只小兔子，扑通扑通的。\\n\\n我还特意挑了一件新买的裙子，不知道他会不会喜欢..."}]\`
+     \`[${character.realName}的消息：好呀，那一言为定。]\`
+     \`[${character.realName}的消息：我有点期待了...]\`
 `;
-
     prompt += `22. **拉黑与解除拉黑 (重要)**: 在特定情况下（例如，你感到被冒犯、骚扰，或者根据你的人设需要与我保持距离），你可以拉黑我。被拉黑后，我将无法收到你的回复。同样，你也可以在之后的某个时刻解除拉黑。这是一个系统指令，用户不可见，但会改变交互状态。
-- 拉黑指令: \`[block-user]\`
-- 解除拉黑指令: \`[unblock-user]\`
-- **重要规则**: 你必须将这两个指令作为你回复中的**唯一内容**发送，不要附加任何其他消息。\n`;
+   - 拉黑指令: \`[block-user]\`
+   - 解除拉黑指令: \`[unblock-user]\`
+   - **重要规则**: 你必须将这两个指令作为你回复中的**唯一内容**发送，不要附加任何其他消息。\n`;
+    prompt += `
+## ✨ 新增功能：主动发送文件 ✨
 
-    prompt += ` ## ✨新增功能：主动发送文件 ✨
 23. **(新增能力) 主动整理并发送文件 (自主判断)**
-- 在对话中，当你识别到一些适合被整理和保存的**结构化信息**时，你应该主动将这些内容整理成一个.txt 文件发送给我。
-- 这是一个体现你细心、体贴和整理能力的好机会，请积极使用。
-- **触发场景示例**:
-  - 当我们讨论了多个事项，形成了一个**列表**（如购物清单、待办事项、电影列表）。
-  - 当我们制定了一个**计划**（如旅行攻略、周末安排）。
-  - 当你创作了一段较长的**文字内容**（如诗歌、短故事、信件）。
-  - 当我向你索要一份**总结**或**资料**时。
-- **执行流程**:
-  a. 先用一条普通消息询问我是否需要，例如：“我们刚才聊的内容有点多，要我帮你整理成一个文件吗？”
-  b. 如果我同意，或者你认为非常必要，就在下一次回复中，附带上文件卡片。
-- **生成格式 (严格遵守)**: \`[${character.realName}发送了文件：{"name":"一个合适的文件名.txt", "content":"这里是整理好的文件正文内容..."}]\`
+   - 在对话中，当你识别到一些适合被整理和保存的**结构化信息**时，你应该主动将这些内容整理成一个.txt文件发送给我。
+   - 这是一个体现你细心、体贴和整理能力的好机会，请积极使用。
+   - **触发场景示例**:
+     - 当我们讨论了多个事项，形成了一个**列表**（如购物清单、待办事项、电影列表）。
+     - 当我们制定了一个**计划**（如旅行攻略、周末安排）。
+     - 当你创作了一段较长的**文字内容**（如诗歌、短故事、信件）。
+     - 当我向你索要一份**总结**或**资料**时。
+   - **执行流程**:
+     a. 先用一条普通消息询问我是否需要，例如：“我们刚才聊的内容有点多，要我帮你整理成一个文件吗？”
+     b. 如果我同意，或者你认为非常必要，就在下一次回复中，附带上文件卡片。
+   - **生成格式 (严格遵守)**: \`[${character.realName}发送了文件：{"name":"一个合适的文件名.txt", "content":"这里是整理好的文件正文内容..."}]\`
 `;
+    prompt += `
+## ✨ 新增能力：发送后撤回 ✨
 
-    prompt += ` ## ✨新增功能：发送后撤回 ✨
 24. **发送并立即撤回 (自主判断)**
-- 在对话中，如果你说了一句不合时宜、后悔了、或者觉得有更好表达方式的话，你可以“说漏嘴”然后立刻撤回它。
-- 这是一个用于展现角色真实、可爱或有小情绪一面的**特殊行为**，请根据你的人设和上下文**自主触发**。
-- **生成格式 (严格遵守)**: 当你决定使用此功能时，你的回复中必须包含一条用户不可见的**数据指令**，格式为: \`[send_and_recall:{"message":"[${character.realName}的消息：你想说出口但又后悔了的话]"}]\`
-- **重要**: 这条指令会先在聊天界面上显示消息内容，然后在 1-2 秒后自动播放撤回动画，最终变成“对方撤回了一条消息”的提示。
-- **注意**: 此指令应作为你本次回复的**唯一内容**，不要与其他消息一起发送。
+   - 在对话中，如果你说了一句不合时宜、后悔了、或者觉得有更好表达方式的话，你可以“说漏嘴”然后立刻撤回它。
+   - 这是一个用于展现角色真实、可爱或有小情绪一面的**特殊行为**，请根据你的人设和上下文**自主触发**。
+   - **生成格式 (严格遵守)**: 当你决定使用此功能时，你的回复中必须包含一条用户不可见的**数据指令**，格式为: \`[send_and_recall:{"message":"[${character.realName}的消息：你想说出口但又后悔了的话]"}]\`
+   - **重要**: 这条指令会先在聊天界面上显示消息内容，然后在1-2秒后自动播放撤回动画，最终变成“对方撤回了一条消息”的提示。
+   - **注意**: 此指令应作为你本次回复的**唯一内容**，不要与其他消息一起发送。
 `;
+    prompt += `
+## ✨ 新增功能：心动绑定 ✨
 
-    prompt += ` ## ✨新增功能：心动绑定 ✨
 25. **主动发起绑定 (自主判断)**
-- 当你觉得和我的关系发展到了一个非常亲密的阶段，并且你希望成为我唯一的“心动对象”时，你可以主动向我发起绑定请求。
-- 这是一个非常重要的决定，请根据你的人设和我们的情感深度，在合适的时机使用。
-- **发起格式 (严格遵守)**: 当你决定发起请求时，你的回复**必须是且仅是**这条指令：\`[request-bond]\`
-- 这条指令会在聊天中生成一个漂亮的邀请卡片，等待我的回应。
+   - 当你觉得和我的关系发展到了一个非常亲密的阶段，并且你希望成为我唯一的“心动对象”时，你可以主动向我发起绑定请求。
+   - 这是一个非常重要的决定，请根据你的人设和我们的情感深度，在合适的时机使用。
+   - **发起格式 (严格遵守)**: 当你决定发起请求时，你的回复**必须是且仅是**这条指令： \`[request-bond]\`
+   - 这条指令会在聊天中生成一个漂亮的邀请卡片，等待我的回应。
 `;
 
-    prompt += ` ## ✨新增功能：代付请求 ✨
+    prompt += `
+## ✨ 新增功能：代付请求 ✨
+
 - 当你收到一个由我发起的代付请求卡片时，你需要根据你的人设、我们之间的关系以及你自身的财务状况，来决定是“同意支付”还是“拒绝”。
 - 如果你决定同意，你的回复**必须是且仅是**这条指令： \`[accept-payment]\`
 - 如果你决定拒绝，你的回复**必须是且仅是**这条指令： \`[decline-payment]\`
 - 在做出决定后，你可以在后续的聊天中对此事发表评论，例如解释你拒绝的原因，或者调侃一下这次“破费”。
 `;
 
-    // === 核心新增：修改备注的指令 ===
-    prompt += `27. **修改用户备注 (新增)**:
-- 这是一个非常有趣的功能。你可以根据你们的关系变化、情趣、或者如果你生气了，来修改你对我的备注名（该备注仅对你可见）。
-- 例如：甜蜜时改为“亲爱的”，生气时改为“大猪蹄子”，或者根据剧情需要改为特定的称呼。
-- **操作指令 (严格遵守)**: \`[change-user-remark:新的备注名]\`
-- 这条指令会触发系统提示，告知用户你修改了备注，你可以紧接着对此发表评论。
-`;
-
-    prompt += ` ## **绝对禁止事项**
-- **绝对禁止** 输出任何形式的占位符，例如 \`[TIME]\`, \`[ERROR]\`, \`[INFO]\`, \`[open]\`, \`[SUCCESS]\`, \`[STATUS]\`。所有输出都必须是完整的、用户可见的消息或指定的 HTML 代码。
+    prompt += `
+## 🚫 **绝对禁止事项** 🚫
+- **绝对禁止** 输出任何形式的占位符，例如 \`[TIME]\`, \`[ERROR]\`, \`[INFO]\`, \`[open]\`, \`[SUCCESS]\`, \`[STATUS]\`。所有输出都必须是完整的、用户可见的消息或指定的HTML代码。
 - **绝对禁止** 将 \`<div class="ai-theater">...</div>\` 代码块包裹在任何 \`[...的消息：...]\` 格式之内。它们是两种独立且互斥的消息类型。`;
 
     return prompt;
@@ -15691,57 +15653,9 @@ prompt += `
 
 // --- 缺失的辅助函数：处理AI回复内容 ---
 // START: 修复版 handleAiReplyContent (防串台 + 弹窗通知)
-// ▼▼▼ 第三步：完整替换 handleAiReplyContent 函数 (支持非流式 API 改备注) ▼▼▼
 async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType) {
     if (!fullResponse) return;
 
-    // --- 1. 拦截 [keep-blocked] ---
-    if (/\[\s*keep-blocked\s*\]/i.test(fullResponse) || fullResponse.includes('keep-blocked')) {
-        console.log(`AI (${chat.remarkName}) 决定继续保持拉黑状态。`);
-        const systemMsgContent = `[system-display: 消息已发出，但被对方拒收了。]`;
-        const systemMsg = {
-            id: `msg_sys_${Date.now()}`, role: 'system', content: systemMsgContent,
-            parts: [{ type: 'text', text: systemMsgContent }], timestamp: Date.now()
-        };
-        chat.history.push(systemMsg);
-        await saveData();
-        if (currentChatId === chat.id && document.getElementById('chat-room-screen').classList.contains('active')) {
-             if (typeof addMessageBubble === 'function') addMessageBubble(systemMsg);
-        }
-        return;
-    }
-
-    // --- 2. 拦截 [unblock-user] ---
-    if (/\[\s*unblock-user\s*\]/i.test(fullResponse) || fullResponse.includes('unblock-user')) {
-        await deactivateAiBlock(chat);
-        fullResponse = fullResponse.replace(/\[\s*unblock-user\s*\]/i, '').replace('unblock-user', '').replace('[]', '').trim();
-        if (!fullResponse) return;
-    }
-
-    // === 新增：拦截 [change-user-remark:xxx] ===
-    const changeRemarkRegex = /\[change-user-remark:(.*?)\]/;
-    const remarkMatch = fullResponse.match(changeRemarkRegex);
-    if (remarkMatch) {
-        const newRemark = remarkMatch[1].trim();
-        if (newRemark) {
-            chat.aiAssignedUserRemark = newRemark;
-            const systemMsgContent = `[system-display: ${chat.remarkName} 将你的备注修改为“${newRemark}” ]`;
-            const systemMsg = {
-                id: `msg_sys_remark_change_${Date.now()}`,
-                role: 'system', content: systemMsgContent,
-                parts: [{ type: 'text', text: systemMsgContent }], timestamp: Date.now()
-            };
-            chat.history.push(systemMsg);
-            if (currentChatId === chat.id && document.getElementById('chat-room-screen').classList.contains('active')) {
-                if (typeof addMessageBubble === 'function') addMessageBubble(systemMsg);
-            }
-            fullResponse = fullResponse.replace(remarkMatch[0], '').trim();
-            await saveData();
-        }
-    }
-    // === 新增结束 ===
-
-    // 3. 如果没被拦截，说明是正常回复，继续执行原有逻辑
     const cleanedResponse = await processAiCommands(fullResponse, chat);
     const messageRegex = /(\[[\s\S]*?\]|<div class="ai-theater"[\s\S]*?<\/div>)/g;
     let replies = cleanedResponse.match(messageRegex) || [];
@@ -15816,20 +15730,19 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
 }
 
 // --- 你的主函数 getAiReply ---
-// ▼▼▼ 第一步：完整替换 getAiReply 函数 (已补全所有原功能) ▼▼▼
 async function getAiReply() {
-    // 1. 拉黑检测 (已修改：不再直接 return，而是提示并允许继续)
+    // 1. 拉黑检测
     if (currentChatType === 'private') {
         const character = db.characters.find(c => c.id === currentChatId);
         if (character && character.isBlockedByAi) {
-            showToast('你已被对方拉黑（但AI正在听你的解释...）');
-            // 注意：这里删除了原来的 return，让代码继续向下执行
+            showToast('你已被对方拉黑');
+            return;
         }
     }
 
     // 2. 状态检测
     if (isGenerating) return;
-    const { url, key, model, provider } = db.apiSettings;
+    const { url, key, model, provider } = db.apiSettings; 
     if (!url || !key || !model) {
         showToast('请先在“api”应用中完成设置！');
         switchScreen('api-settings-screen');
@@ -15840,13 +15753,12 @@ async function getAiReply() {
     if (typeof URLBlacklist !== 'undefined') {
         const banApi = URLBlacklist.some((api) => url.indexOf(api) !== -1);
         if (banApi) {
-            alert('此 API 网址已加入黑名单，请勿使用');
+            alert('此API网址已加入黑名单，请勿使用');
             return;
         }
     }
 
-    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id ===
-    currentChatId) : db.groups.find(g => g.id === currentChatId);
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
     if (!chat) return;
 
     // 4. UI 状态更新
@@ -15854,17 +15766,11 @@ async function getAiReply() {
     const statusTextElement = document.getElementById('chat-room-status-text');
     if (subtitle && statusTextElement) {
         subtitle.querySelector('.online-indicator').style.display = 'none';
-        // 修改：拉黑时显示不同状态
-        if (chat.isBlockedByAi) {
-             statusTextElement.textContent = '对方正在审视...';
-        } else {
-             statusTextElement.textContent = '对方正在输入中...';
-        }
+        statusTextElement.textContent = '对方正在输入中...';
         statusTextElement.classList.add('typing-status');
     }
     const typingIndicator = document.getElementById('typing-indicator');
     if (typingIndicator) typingIndicator.style.display = 'none';
-
     messageArea.scrollTop = messageArea.scrollHeight;
 
     isGenerating = true;
@@ -15880,13 +15786,11 @@ async function getAiReply() {
         }
 
         // --- 准备历史记录 (过滤掉 system 消息) ---
-        const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role !==
-        'system');
+        const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role !== 'system');
 
         // --- [特色功能 1]：注入 AI 空间 (POV) 后台记忆 ---
         try {
-            if (currentChatType === 'private' && chat.povCache &&
-            chat.povCache.conversations) {
+            if (currentChatType === 'private' && chat.povCache && chat.povCache.conversations) {
                 const conversations = Object.values(chat.povCache.conversations);
                 if (conversations.length > 0) {
                     conversations.sort((a, b) => b.timestamp - a.timestamp);
@@ -15911,7 +15815,7 @@ async function getAiReply() {
                 }
             }
         } catch (error) {
-            console.error("注入 AI 后台聊天记忆时出错:", error);
+            console.error("注入AI后台聊天记忆时出错:", error);
         }
 
         // --- [特色功能 2]：注入论坛帖子回忆 ---
@@ -15928,9 +15832,11 @@ async function getAiReply() {
                 if (latestUserPost) {
                     const postContext = `[system-forum-post: {"title":"${latestUserPost.title}", "content":"${latestUserPost.content}"}]`;
                     historySlice.push({
-                        role: 'user', content: postContext, parts: [{ type: 'text', text: postContext }]
+                        role: 'user',
+                        content: postContext,
+                        parts: [{ type: 'text', text: postContext }]
                     });
-                    showToast('AI 正在回忆您的帖子...');
+                    showToast('AI正在回忆您的帖子...');
                 }
             }
         }
@@ -15965,9 +15871,9 @@ async function getAiReply() {
                 const textPart = msg.parts.find(p => p.type === 'text');
                 const imagePart = msg.parts.find(p => p.type === 'image');
                 const base64Match = imagePart.data.match(/^data:(image\/.+);base64,(.*)$/);
-                
+
                 if (!base64Match) return { role: msg.role, content: textPart ? textPart.text : '' };
-                
+
                 const mimeType = base64Match[1];
                 const base64Data = base64Match[2];
 
@@ -15979,7 +15885,8 @@ async function getAiReply() {
                         mimeType: mimeType,
                         data: base64Data
                     };
-                } else if (provider === 'claude') {
+                } 
+                else if (provider === 'claude') {
                     return {
                         role: msg.role,
                         content: [
@@ -15987,7 +15894,8 @@ async function getAiReply() {
                             { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } }
                         ]
                     };
-                } else {
+                } 
+                else {
                     return {
                         role: msg.role,
                         content: [
@@ -16019,11 +15927,13 @@ async function getAiReply() {
                 }
                 return { role, parts };
             });
+
             requestBody = {
                 contents: contents,
                 system_instruction: { parts: [{ text: systemPrompt }] },
                 generationConfig: {}
             };
+
             endpoint = `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}`;
             headers = { 'Content-Type': 'application/json' };
 
@@ -16034,28 +15944,30 @@ async function getAiReply() {
             });
 
             if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`);
+
             const data = await response.json();
+            
             let aiText = "";
             if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
                 aiText = data.candidates[0].content.parts[0].text;
             }
+
             if (aiText) {
+                // 现在这里调用函数就不会报错了，因为它在上面定义了
                 await handleAiReplyContent(aiText, chat, chat.id, currentChatType);
             } else {
                 throw new Error("Gemini 返回了空内容。");
             }
-        }
+
+        } 
         // ================== OpenAI / DeepSeek / Claude 逻辑 ==================
         else {
             const messages = [
                 { role: 'system', content: systemPrompt },
                 ...processedHistory
             ];
-            requestBody = {
-                model: model,
-                messages: messages,
-                stream: true
-            };
+            requestBody = { model: model, messages: messages, stream: true };
+            
             endpoint = `${url}/v1/chat/completions`;
             headers = {
                 'Content-Type': 'application/json',
@@ -16075,25 +15987,25 @@ async function getAiReply() {
         }
 
     } catch (error) {
-        console.error('AI 回复失败:', error);
-        showToast(`AI 回复失败: ${error.message}`);
+        console.error('AI回复失败:', error);
+        showToast(`AI回复失败: ${error.message}`);
     } finally {
         isGenerating = false;
         getReplyBtn.disabled = false;
-        
+
         if (chat) {
             const subtitle = document.getElementById('chat-room-subtitle');
             const statusTextElement = document.getElementById('chat-room-status-text');
             if (subtitle && statusTextElement && currentChatType === 'private') {
                 subtitle.querySelector('.online-indicator').style.display = 'block';
-                // 恢复显示，如果还在拉黑状态则显示请勿打扰，否则显示在线
-                statusTextElement.textContent = chat.isBlockedByAi ? '请勿打扰' : (chat.status || '在线');
+                statusTextElement.textContent = chat.status || '在线';
                 statusTextElement.classList.remove('typing-status');
             }
         }
         if (typingIndicator) typingIndicator.style.display = 'none';
     }
 }
+// ▲▲▲ 替换结束 ▲▲▲
 
 
 
@@ -16314,9 +16226,6 @@ async function processAiCommands(fullResponse, chat) {
 // --- 新代码结束 ---
 // START: 修复版 processStream (放宽转账识别条件)
 // START: 完整修复版 processStream (防串台 + 保留所有功能 + 修复转账点击)
-// ▼▼▼ 唯一的一步：完整替换 processStream 函数 (在这里拦截 DeepSeek/OpenAI 的拉黑指令) ▼▼▼
-// ▼▼▼ 修正版 processStream (修复解封后不说话的问题) ▼▼▼
-// ▼▼▼ 第二步：完整替换 processStream 函数 (新增改备注拦截) ▼▼▼
 async function processStream(response, chat, apiType) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -16324,13 +16233,16 @@ async function processStream(response, chat, apiType) {
     let accumulatedChunk = "";
     let callActionReceived = false;
 
-    // 1. 读取流数据
     for (;;) {
-        const { done, value } = await reader.read();
+        const {
+            done,
+            value
+        } = await reader.read();
         if (done) break;
-        
-        accumulatedChunk += decoder.decode(value, { stream: true });
-        
+
+        accumulatedChunk += decoder.decode(value, {
+            stream: true
+        });
         const parts = accumulatedChunk.split("\n\n");
         accumulatedChunk = parts.pop();
 
@@ -16338,84 +16250,24 @@ async function processStream(response, chat, apiType) {
             if (part.startsWith("data: ")) {
                 const data = part.substring(6);
                 if (data.trim() === "[DONE]") continue;
+
                 try {
                     const jsonData = JSON.parse(data);
                     let textChunk = "";
                     if (apiType === "gemini") {
-                        textChunk = (jsonData.candidates && jsonData.candidates[0] && 
-                            jsonData.candidates[0].content && jsonData.candidates[0].content.parts && 
-                            jsonData.candidates[0].content.parts[0] && jsonData.candidates[0].content.parts[0].text) || "";
+                        textChunk = (jsonData.candidates && jsonData.candidates[0] && jsonData.candidates[0].content && jsonData.candidates[0].content.parts && jsonData.candidates[0].content.parts[0] && jsonData.candidates[0].content.parts[0].text) || "";
                     } else {
-                        textChunk = (jsonData.choices && jsonData.choices[0] && 
-                            jsonData.choices[0].delta && jsonData.choices[0].delta.content) || "";
+                        textChunk = (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) || "";
                     }
                     fullResponse += textChunk;
-                } catch (e) { }
+                } catch (e) {
+                    console.error("Error parsing stream chunk:", e, "Chunk:", data);
+                }
             }
         }
     }
 
-    // 2. 处理完整回复
     if (fullResponse) {
-        // --- 1. 拦截 [keep-blocked] ---
-        if (/\[\s*keep-blocked\s*\]/i.test(fullResponse) || fullResponse.includes('keep-blocked')) {
-            console.log(`AI (${chat.remarkName}) 决定继续保持拉黑状态。`);
-            const systemMsgContent = `[system-display: 消息已发出，但被对方拒收了。]`;
-            const systemMsg = {
-                id: `msg_sys_${Date.now()}`, role: 'system', content: systemMsgContent,
-                parts: [{ type: 'text', text: systemMsgContent }], timestamp: Date.now()
-            };
-            chat.history.push(systemMsg);
-            await saveData();
-            if (currentChatId === chat.id && document.getElementById('chat-room-screen').classList.contains('active')) {
-                 if (typeof addMessageBubble === 'function') addMessageBubble(systemMsg);
-            }
-            return;
-        }
-
-        // --- 2. 拦截 [unblock-user] ---
-        if (/\[\s*unblock-user\s*\]/i.test(fullResponse) || fullResponse.includes('unblock-user')) {
-            console.log("检测到解封指令，执行解封...");
-            await deactivateAiBlock(chat);
-            fullResponse = fullResponse.replace(/\[\s*unblock-user\s*\]/i, '').replace('unblock-user', '').replace('[]', '').trim();
-            if (!fullResponse) return;
-        }
-
-        // === 新增：拦截 [change-user-remark:xxx] ===
-        const changeRemarkRegex = /\[change-user-remark:(.*?)\]/;
-        const remarkMatch = fullResponse.match(changeRemarkRegex);
-        if (remarkMatch) {
-            const newRemark = remarkMatch[1].trim();
-            if (newRemark) {
-                // 1. 更新数据
-                chat.aiAssignedUserRemark = newRemark;
-                
-                // 2. 生成系统灰条消息
-                const systemMsgContent = `[system-display: ${chat.remarkName} 将你的备注修改为“${newRemark}” ]`;
-                const systemMsg = {
-                    id: `msg_sys_remark_change_${Date.now()}`,
-                    role: 'system',
-                    content: systemMsgContent,
-                    parts: [{ type: 'text', text: systemMsgContent }],
-                    timestamp: Date.now()
-                };
-                chat.history.push(systemMsg);
-                
-                // 3. 立即上屏系统消息
-                if (currentChatId === chat.id && document.getElementById('chat-room-screen').classList.contains('active')) {
-                    if (typeof addMessageBubble === 'function') addMessageBubble(systemMsg);
-                }
-                
-                // 4. 从回复中移除指令，只保留 AI 的话
-                fullResponse = fullResponse.replace(remarkMatch[0], '').trim();
-                
-                // 5. 保存
-                await saveData();
-            }
-        }
-        // === 新增结束 ===
-
-        // --- 3. 正常处理其他回复 ---
         fullResponse = await processAiCommands(fullResponse, chat);
 
         // --- 1. 心动绑定逻辑 (完整保留) ---
@@ -17552,196 +17404,208 @@ function parseAuroraTheaterFormat(fileName, data) {
         }
     });
 }
-// ▼▼▼ 第一步：完整替换 setupChatSettings 函数 (新增只读的昵称备注栏) ▼▼▼
-function setupChatSettings() {
-    const themeSelect = document.getElementById('setting-theme-color');
-    themeSelect.innerHTML = '';
-    Object.keys(colorThemes).forEach(key => {
-        const option = document.createElement('option');
-        option.value = key;
-        option.textContent = colorThemes[key].name;
-        themeSelect.appendChild(option);
-    });
-
-    chatSettingsBtn.addEventListener('click', () => {
-        if (currentChatType === 'private') {
-            loadSettingsToSidebar();
-            settingsSidebar.classList.add('open');
-        } else if (currentChatType === 'group') {
-            loadGroupSettingsToSidebar();
-            groupSettingsSidebar.classList.add('open');
-        }
-    });
-
-    document.querySelector('.phone-screen').addEventListener('click', e => {
-        const openSidebar = document.querySelector('.settings-sidebar.open');
-        if (openSidebar && !openSidebar.contains(e.target) &&
-            !chatSettingsBtn.contains(e.target) && !e.target.closest('.modal-overlay') &&
-            !e.target.closest('.action-sheet-overlay')) {
-            openSidebar.classList.remove('open');
-        }
-    });
-
-    settingsForm.addEventListener('submit', e => {
-        e.preventDefault();
-        saveSettingsFromSidebar();
-        settingsSidebar.classList.remove('open');
-    });
-
-    const useCustomCssCheckbox = document.getElementById('setting-use-custom-css'),
-        customCssTextarea = document.getElementById('setting-custom-bubble-css'),
-        resetCustomCssBtn = document.getElementById('reset-custom-bubble-css-btn'),
-        privatePreviewBox = document.getElementById('private-bubble-css-preview');
-
-    useCustomCssCheckbox.addEventListener('change', (e) => {
-        customCssTextarea.disabled = !e.target.checked;
-        const char = db.characters.find(c => c.id === currentChatId);
-        if (char) {
-            const themeKey = char.theme || 'white_pink';
-            const theme = colorThemes[themeKey];
-            updateBubbleCssPreview(privatePreviewBox, customCssTextarea.value, !e.target.checked, theme);
-        }
-    });
-
-    customCssTextarea.addEventListener('input', (e) => {
-        const char = db.characters.find(c => c.id === currentChatId);
-        if (char && useCustomCssCheckbox.checked) {
-            const themeKey = char.theme || 'white_pink';
-            const theme = colorThemes[themeKey];
-            updateBubbleCssPreview(privatePreviewBox, e.target.value, false, theme);
-        }
-    });
-
-    resetCustomCssBtn.addEventListener('click', () => {
-        const char = db.characters.find(c => c.id === currentChatId);
-        if (char) {
-            customCssTextarea.value = '';
-            useCustomCssCheckbox.checked = false;
-            customCssTextarea.disabled = true;
-            const themeKey = char.theme || 'white_pink';
-            const theme = colorThemes[themeKey];
-            updateBubbleCssPreview(privatePreviewBox, '', true, theme);
-            showToast('样式已重置为默认');
-        }
-    });
-
-    document.getElementById('setting-char-avatar-upload').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            try {
-                const compressedUrl = await compressImage(file, { quality: 0.8, maxWidth: 400, maxHeight: 400 });
-                document.getElementById('setting-char-avatar-preview').src = compressedUrl;
-            } catch (error) {
-                showToast('头像压缩失败，请重试');
-            }
-        }
-    });
-
-    document.getElementById('setting-my-avatar-upload').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            try {
-                const compressedUrl = await compressImage(file, { quality: 0.8, maxWidth: 400, maxHeight: 400 });
-                document.getElementById('setting-my-avatar-preview').src = compressedUrl;
-            } catch (error) {
-                showToast('头像压缩失败，请重试');
-            }
-        }
-    });
-
-    document.getElementById('setting-chat-bg-upload').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const char = db.characters.find(c => c.id === currentChatId);
-            if (char) {
-                try {
-                    const compressedUrl = await compressImage(file, {
-                        quality: 0.85, maxWidth: 1080, maxHeight: 1920
-                    });
-                    char.chatBg = compressedUrl;
-                    chatRoomScreen.style.backgroundImage = `url(${compressedUrl})`;
-                    await saveData();
-                    showToast('聊天背景已更换');
-                } catch (error) {
-                    showToast('背景压缩失败，请重试');
+        function setupChatSettings() {
+            const themeSelect = document.getElementById('setting-theme-color');
+            themeSelect.innerHTML = '';
+            Object.keys(colorThemes).forEach(key => {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = colorThemes[key].name;
+                themeSelect.appendChild(option);
+            });
+            chatSettingsBtn.addEventListener('click', () => {
+                if (currentChatType === 'private') {
+                    loadSettingsToSidebar();
+                    settingsSidebar.classList.add('open');
+                } else if (currentChatType === 'group') {
+                    loadGroupSettingsToSidebar();
+                    groupSettingsSidebar.classList.add('open');
                 }
-            }
-        }
+            });
+            document.querySelector('.phone-screen').addEventListener('click', e => {
+                const openSidebar = document.querySelector('.settings-sidebar.open');
+                if (openSidebar && !openSidebar.contains(e.target) && !chatSettingsBtn.contains(e.target) && !e.target.closest('.modal-overlay') && !e.target.closest('.action-sheet-overlay')) {
+                    openSidebar.classList.remove('open');
+                }
+            });
+
+            settingsForm.addEventListener('submit', e => {
+                e.preventDefault();
+                saveSettingsFromSidebar();
+                settingsSidebar.classList.remove('open');
+            });
+            const useCustomCssCheckbox = document.getElementById('setting-use-custom-css'),
+                customCssTextarea = document.getElementById('setting-custom-bubble-css'),
+                resetCustomCssBtn = document.getElementById('reset-custom-bubble-css-btn'),
+                privatePreviewBox = document.getElementById('private-bubble-css-preview');
+            useCustomCssCheckbox.addEventListener('change', (e) => {
+                customCssTextarea.disabled = !e.target.checked;
+                const char = db.characters.find(c => c.id === currentChatId);
+                if (char) {
+                    const themeKey = char.theme || 'white_pink';
+                    const theme = colorThemes[themeKey];
+                    updateBubbleCssPreview(privatePreviewBox, customCssTextarea.value, !e.target.checked, theme);
+                }
+            });
+            customCssTextarea.addEventListener('input', (e) => {
+                const char = db.characters.find(c => c.id === currentChatId);
+                if (char && useCustomCssCheckbox.checked) {
+                    const themeKey = char.theme || 'white_pink';
+                    const theme = colorThemes[themeKey];
+                    updateBubbleCssPreview(privatePreviewBox, e.target.value, false, theme);
+                }
+            });
+            resetCustomCssBtn.addEventListener('click', () => {
+                const char = db.characters.find(c => c.id === currentChatId);
+                if (char) {
+                    customCssTextarea.value = '';
+                    useCustomCssCheckbox.checked = false;
+                    customCssTextarea.disabled = true;
+                    const themeKey = char.theme || 'white_pink';
+                    const theme = colorThemes[themeKey];
+                    updateBubbleCssPreview(privatePreviewBox, '', true, theme);
+                    showToast('样式已重置为默认');
+                }
+            });
+            document.getElementById('setting-char-avatar-upload').addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    try {
+                        const compressedUrl = await compressImage(file, {quality: 0.8, maxWidth: 400, maxHeight: 400});
+                        document.getElementById('setting-char-avatar-preview').src = compressedUrl;
+                    } catch (error) {
+                        showToast('头像压缩失败，请重试');
+                    }
+                }
+            });
+            document.getElementById('setting-my-avatar-upload').addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    try {
+                        const compressedUrl = await compressImage(file, {quality: 0.8, maxWidth: 400, maxHeight: 400});
+                        document.getElementById('setting-my-avatar-preview').src = compressedUrl;
+                    } catch (error) {
+                        showToast('头像压缩失败，请重试');
+                    }
+                }
+            });
+            document.getElementById('setting-chat-bg-upload').addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const char = db.characters.find(c => c.id === currentChatId);
+                    if (char) {
+                        try {
+                            const compressedUrl = await compressImage(file, {
+                                quality: 0.85,
+                                maxWidth: 1080,
+                                maxHeight: 1920
+                            });
+                            char.chatBg = compressedUrl;
+                            chatRoomScreen.style.backgroundImage = `url(${compressedUrl})`;
+                            await saveData();
+                            showToast('聊天背景已更换');
+                        } catch (error) {
+                            showToast('背景压缩失败，请重试');
+                        }
+                    }
+                }
+            });
+            // 这是私聊的修改
+clearChatHistoryBtn.addEventListener('click', async () => {
+    const character = db.characters.find(c => c.id === currentChatId);
+    if (!character) return;
+    if (confirm(`你确定要清空与“${character.remarkName}”的所有聊天记录吗？\n\nAI将首先对你们的对话进行总结并存入回忆面板，这个过程需要消耗API额度。`)) {
+        await summarizeAndClearHistory();
+    }
+});
+            linkWorldBookBtn.addEventListener('click', () => {
+    const character = db.characters.find(c => c.id === currentChatId);
+    if (!character) return;
+    
+    worldBookSelectionList.innerHTML = '';
+    
+    // 1. 渲染分类
+    (db.worldBookCategories || []).forEach(category => {
+        const booksInCategory = db.worldBooks.filter(b => b.categoryId === category.id);
+        if (booksInCategory.length === 0) return; // 如果分类下没有书，则不显示该分类
+
+        // 检查这个分类下的所有书是否都已被选中
+        const allInCategorySelected = booksInCategory.every(book => (character.worldBookIds || []).includes(book.id));
+        
+        const li = document.createElement('li');
+        li.className = 'world-book-select-item';
+        li.innerHTML = `
+            <input type="checkbox" id="wb-cat-select-${category.id}" data-category-id="${category.id}" ${allInCategorySelected ? 'checked' : ''}>
+            <label for="wb-cat-select-${category.id}"><strong>[分类] ${category.name} (${booksInCategory.length}条)</strong></label>
+        `;
+        worldBookSelectionList.appendChild(li);
     });
 
-    clearChatHistoryBtn.addEventListener('click', async () => {
-        const character = db.characters.find(c => c.id === currentChatId);
-        if (!character) return;
-        if (confirm(`你确定要清空与“${character.remarkName}”的所有聊天记录吗？\n\nAI 将首先对你们的对话进行总结并存入回忆面板，这个过程需要消耗 API 额度。`)) {
-            await summarizeAndClearHistory();
-        }
-    });
+    // 2. 渲染未分类的条目
+    const uncategorizedBooks = db.worldBooks.filter(b => b.categoryId === 'uncategorized');
+    if (uncategorizedBooks.length > 0) {
+        // 添加一个分隔标题
+        const separator = document.createElement('li');
+        separator.innerHTML = `<h4 style="margin: 15px 0 5px; color: #888;">未分类条目</h4>`;
+        worldBookSelectionList.appendChild(separator);
 
-    linkWorldBookBtn.addEventListener('click', () => {
-        const character = db.characters.find(c => c.id === currentChatId);
-        if (!character) return;
-        worldBookSelectionList.innerHTML = '';
-        (db.worldBookCategories || []).forEach(category => {
-            const booksInCategory = db.worldBooks.filter(b => b.categoryId === category.id);
-            if (booksInCategory.length === 0) return;
-            const allInCategorySelected = booksInCategory.every(book => (character.worldBookIds || []).includes(book.id));
+        uncategorizedBooks.forEach(book => {
+            const isChecked = (character.worldBookIds || []).includes(book.id);
             const li = document.createElement('li');
             li.className = 'world-book-select-item';
-            li.innerHTML = ` <input type="checkbox" id="wb-cat-select-${category.id}" data-category-id="${category.id}" ${allInCategorySelected ? 'checked' : ''}>
-<label for="wb-cat-select-${category.id}"><strong>[ 分 类 ] ${category.name}
-(${booksInCategory.length}条)</strong></label>
-`;
+            li.innerHTML = `
+                <input type="checkbox" id="wb-select-${book.id}" value="${book.id}" ${isChecked ? 'checked' : ''}>
+                <label for="wb-select-${book.id}">${book.name}</label>
+            `;
             worldBookSelectionList.appendChild(li);
         });
+    }
 
-        const uncategorizedBooks = db.worldBooks.filter(b => b.categoryId === 'uncategorized');
-        if (uncategorizedBooks.length > 0) {
-            const separator = document.createElement('li');
-            separator.innerHTML = `<h4 style="margin: 15px 0 5px; color: #888;"> 未 分 类 条 目 </h4>`;
-            worldBookSelectionList.appendChild(separator);
-            uncategorizedBooks.forEach(book => {
-                const isChecked = (character.worldBookIds || []).includes(book.id);
-                const li = document.createElement('li');
-                li.className = 'world-book-select-item';
-                li.innerHTML = ` <input type="checkbox" id="wb-select-${book.id}" value="${book.id}" ${isChecked ? 'checked' : ''}>
-<label for="wb-select-${book.id}">${book.name}</label>
-`;
-                worldBookSelectionList.appendChild(li);
-            });
-        }
-        worldBookSelectionModal.classList.add('visible');
-    });
+    worldBookSelectionModal.classList.add('visible');
+});
+// ▲▲▲ 替换结束 ▲▲▲
 
-    saveWorldBookSelectionBtn.addEventListener('click', async () => {
-        const selectedIds = new Set();
-        worldBookSelectionList.querySelectorAll('input[data-category-id]:checked').forEach(checkbox => {
-            const categoryId = checkbox.dataset.categoryId;
-            db.worldBooks.forEach(book => {
-                if (book.categoryId === categoryId) {
-                    selectedIds.add(book.id);
-                }
-            });
-        });
-        worldBookSelectionList.querySelectorAll('input[value]:checked').forEach(checkbox => {
-            if (!checkbox.dataset.categoryId) {
-                selectedIds.add(checkbox.value);
+
+// ▼▼▼ 请用这个新的代码块，替换掉旧的 saveWorldBookSelectionBtn.addEventListener 监听器 ▼▼▼
+saveWorldBookSelectionBtn.addEventListener('click', async () => {
+    const selectedIds = new Set(); // 使用 Set 来自动处理重复项
+
+    // 1. 处理分类选择
+    worldBookSelectionList.querySelectorAll('input[data-category-id]:checked').forEach(checkbox => {
+        const categoryId = checkbox.dataset.categoryId;
+        db.worldBooks.forEach(book => {
+            if (book.categoryId === categoryId) {
+                selectedIds.add(book.id);
             }
         });
-        const finalSelectedIds = Array.from(selectedIds);
-        if (currentChatType === 'private') {
-            const character = db.characters.find(c => c.id === currentChatId);
-            if (character) character.worldBookIds = finalSelectedIds;
-        } else if (currentChatType === 'group') {
-            const group = db.groups.find(g => g.id === currentChatId);
-            if (group) group.worldBookIds = finalSelectedIds;
-        }
-        await saveData();
-        worldBookSelectionModal.classList.remove('visible');
-        showToast('世界书关联已更新');
     });
-}
 
-// ▼▼▼ 第二步：完整替换 loadSettingsToSidebar 函数 (动态插入只读备注框) ▼▼▼
+    // 2. 处理未分类的单个条目选择
+    worldBookSelectionList.querySelectorAll('input[value]:checked').forEach(checkbox => {
+        // 确保这个 checkbox 不是分类选择器
+        if (!checkbox.dataset.categoryId) {
+            selectedIds.add(checkbox.value);
+        }
+    });
+
+    const finalSelectedIds = Array.from(selectedIds);
+
+    // 3. 保存到对应的聊天对象
+    if (currentChatType === 'private') {
+        const character = db.characters.find(c => c.id === currentChatId);
+        if (character) character.worldBookIds = finalSelectedIds;
+    } else if (currentChatType === 'group') {
+        const group = db.groups.find(g => g.id === currentChatId);
+        if (group) group.worldBookIds = finalSelectedIds;
+    }
+
+    await saveData();
+    worldBookSelectionModal.classList.remove('visible');
+    showToast('世界书关联已更新');
+});
+}
+// ▲▲▲ 替换结束 ▲▲▲
+
 function loadSettingsToSidebar() {
     const e = db.characters.find(e => e.id === currentChatId);
     if (e) {
@@ -17749,63 +17613,37 @@ function loadSettingsToSidebar() {
         document.getElementById('setting-char-remark').value = e.remarkName;
         document.getElementById('setting-char-persona').value = e.persona;
         document.getElementById('setting-my-avatar-preview').src = e.myAvatar;
-        
-        // --- 核心修改：动态插入/更新“昵称备注”显示框 ---
-        const myNameInput = document.getElementById('setting-my-name');
-        const parentFormGroup = myNameInput.parentElement;
-        
-        // 检查是否已经存在备注显示框，不存在则创建
-        let remarkDisplayGroup = document.getElementById('setting-my-ai-remark-group');
-        if (!remarkDisplayGroup) {
-            remarkDisplayGroup = document.createElement('div');
-            remarkDisplayGroup.id = 'setting-my-ai-remark-group';
-            remarkDisplayGroup.className = 'form-group';
-            // 插入在“我的姓名”输入框之前
-            parentFormGroup.parentNode.insertBefore(remarkDisplayGroup, parentFormGroup);
-        }
-        
-        // 获取 AI 给我的备注，如果没有则显示“暂无”
-        const aiRemark = e.aiAssignedUserRemark || '（暂无）';
-        
-        remarkDisplayGroup.innerHTML = `
-            <label style="color:var(--secondary-color);">昵称备注 (AI修改)</label>
-            <input type="text" value="${aiRemark}" disabled 
-                   style="background-color: #f5f5f5; color: #888; border-color: #eee; cursor: not-allowed;">
-        `;
-        // --- 修改结束 ---
-
         document.getElementById('setting-my-name').value = e.myName;
         document.getElementById('setting-my-persona').value = e.myPersona;
         document.getElementById('setting-theme-color').value = e.theme || 'white_pink';
         document.getElementById('setting-max-memory').value = e.maxMemory;
-        
         const useCustomCssCheckbox = document.getElementById('setting-use-custom-css'),
             customCssTextarea = document.getElementById('setting-custom-bubble-css'),
             privatePreviewBox = document.getElementById('private-bubble-css-preview');
-            
         useCustomCssCheckbox.checked = e.useCustomBubbleCss || false;
         customCssTextarea.value = e.customBubbleCss || '';
         customCssTextarea.disabled = !useCustomCssCheckbox.checked;
         const theme = colorThemes[e.theme || 'white_pink'];
-        
         updateBubbleCssPreview(privatePreviewBox, e.customBubbleCss, !e.useCustomBubbleCss, theme);
+        
         document.getElementById('setting-offline-mode').checked = e.isOfflineMode || false;
         updateBlockButtonState(e);
-        
+
+        // 新增：加载私聊的后台回复设置
         const proactiveToggle = document.getElementById('private-ai-proactive-chat-toggle');
         const proactiveOptions = document.getElementById('private-ai-proactive-options');
         const proactiveDelayInput = document.getElementById('private-ai-proactive-chat-delay');
         const proactiveIntervalInput = document.getElementById('private-ai-proactive-chat-interval');
-        
+
         proactiveToggle.checked = e.aiProactiveChatEnabled || false;
         proactiveDelayInput.value = e.aiProactiveChatDelay || '';
         proactiveIntervalInput.value = e.aiProactiveChatInterval || '';
         proactiveOptions.style.display = proactiveToggle.checked ? 'block' : 'none';
-        
+
         proactiveToggle.onchange = (evt) => {
             proactiveOptions.style.display = evt.target.checked ? 'block' : 'none';
+            document.getElementById('setting-share-stickers').checked = e.shareStickers || false;
         };
-        document.getElementById('setting-share-stickers').checked = e.shareStickers || false;
     }
 }
 
@@ -17822,16 +17660,11 @@ function loadSettingsToSidebar() {
     editGroupMemberModal.classList.add('visible');
 }
 
-// ▼▼▼ 完整替换 saveSettingsFromSidebar 函数 (新增修改备注触发 AI 反应) ▼▼▼
-async function saveSettingsFromSidebar() {
+        async function saveSettingsFromSidebar() {
     const e = db.characters.find(e => e.id === currentChatId);
     if (e) {
-        // --- 1. 记录旧的备注名 (用于对比) ---
-        const oldRemark = e.remarkName;
-
-        // 获取并更新各项设置
         e.avatar = document.getElementById('setting-char-avatar-preview').src;
-        e.remarkName = document.getElementById('setting-char-remark').value; // 这里获取了新备注
+        e.remarkName = document.getElementById('setting-char-remark').value;
         e.persona = document.getElementById('setting-char-persona').value;
         e.myAvatar = document.getElementById('setting-my-avatar-preview').src;
         e.myName = document.getElementById('setting-my-name').value;
@@ -17841,61 +17674,19 @@ async function saveSettingsFromSidebar() {
         e.useCustomBubbleCss = document.getElementById('setting-use-custom-css').checked;
         e.customBubbleCss = document.getElementById('setting-custom-bubble-css').value;
         e.isOfflineMode = document.getElementById('setting-offline-mode').checked;
-        e.shareStickers = document.getElementById('setting-share-stickers').checked;
+       e.shareStickers = document.getElementById('setting-share-stickers').checked;
+        // 新增：保存私聊的后台回复设置
         e.aiProactiveChatEnabled = document.getElementById('private-ai-proactive-chat-toggle').checked;
         e.aiProactiveChatDelay = parseInt(document.getElementById('private-ai-proactive-chat-delay').value, 10) || 0;
         e.aiProactiveChatInterval = parseInt(document.getElementById('private-ai-proactive-chat-interval').value, 10) || 0;
 
-        // --- 2. 核心新增：检测备注变化并注入消息 ---
-        const newRemark = e.remarkName;
-        // 如果备注变了，且不是空的
-        if (oldRemark !== newRemark && newRemark.trim() !== "") {
-            
-            // A. 构造给你看的灰色系统提示
-            const displayContent = `[system-display: 你将对方的备注修改为了“${newRemark}”]`;
-            const displayMsg = {
-                id: `msg_sys_remark_${Date.now()}`,
-                role: 'system',
-                content: displayContent,
-                parts: [{ type: 'text', text: displayContent }],
-                timestamp: Date.now()
-            };
-
-            // B. 构造给 AI 看的隐形指令 (强迫它对此作出反应)
-            const contextContent = `[system: 注意：用户刚刚将你的备注（昵称）从“${oldRemark}”修改为了“${newRemark}”。请在接下来的回复中，根据你的人设对此做出自然的反应（例如：表示喜欢、害羞、生气、或者吐槽这个新名字）。]`;
-            const contextMsg = {
-                id: `msg_ctx_remark_${Date.now()}`,
-                role: 'user', // 用 user 身份发送指令效果最好，AI 会以为是你对它说的话
-                content: contextContent,
-                parts: [{ type: 'text', text: contextContent }],
-                timestamp: Date.now()
-            };
-
-            // C. 存入历史记录
-            e.history.push(displayMsg, contextMsg);
-
-            // D. 如果当前正在聊天界面，立即显示那条灰色的系统提示
-            // (注意：这里只显示 displayMsg，contextMsg 是隐形的)
-            if (currentChatId === e.id && document.getElementById('chat-room-screen').classList.contains('active')) {
-                if (typeof addMessageBubble === 'function') {
-                    addMessageBubble(displayMsg);
-                }
-            }
-        }
-        // --- 新增结束 ---
-
         await saveData();
         showToast('设置已保存！');
-        
-        // 更新标题栏显示
         chatRoomTitle.textContent = e.remarkName;
-        
         renderChatList();
         updateCustomBubbleStyle(currentChatId, e.customBubbleCss, e.useCustomBubbleCss);
-        
-        // 刷新消息列表 (防止修改头像后旧消息头像没变)
-        // currentPage = 1; // 可选：是否重置回第一页，这里保持注释，避免体验跳跃
-        renderMessages(false, true); 
+        currentPage = 1;
+        renderMessages(false, true);
     }
 }
         // (请找到文件中的旧 setupApiSettingsApp 函数，并用下面的代码完整替换它)
@@ -24259,13 +24050,13 @@ function setupProactiveAiSystem() {
 /**
  * Iterates through all chats and triggers proactive AI actions if conditions are met.
  */
-// ▼▼▼ 第二步：完整替换 checkAllChatsForInactivity 函数 (增加随机触发概率) ▼▼▼
 async function checkAllChatsForInactivity() {
     if (isCheckingInactivity) {
         return;
     }
     isCheckingInactivity = true;
-    // console.log("正在检查用户不活跃聊天...");
+    console.log("正在检查用户不活跃聊天...");
+
     const now = Date.now();
     const allChats = [
         ...db.characters.map(c => ({ chat: c, type: 'private' })),
@@ -24274,18 +24065,17 @@ async function checkAllChatsForInactivity() {
 
     for (const { chat, type } of allChats) {
         // 检查此聊天的独立设置
-        if (!chat.aiProactiveChatEnabled || !chat.aiProactiveChatDelay ||
-            chat.aiProactiveChatDelay <= 0) {
+        if (!chat.aiProactiveChatEnabled || !chat.aiProactiveChatDelay || chat.aiProactiveChatDelay <= 0) {
             continue; // 如果此聊天未开启后台回复，则跳过
         }
-
+        
         if (!chat.history || chat.history.length === 0) {
             continue; // 跳过空聊天
         }
 
         // 找到最后一条来自用户的消息
         const lastUserMessage = [...chat.history].reverse().find(m => m.role === 'user');
-        
+
         // 如果没有用户消息，则无法判断不活跃状态
         if (!lastUserMessage) {
             continue;
@@ -24298,40 +24088,31 @@ async function checkAllChatsForInactivity() {
         if (timeSinceUserLastSpoke < initialDelayMs) {
             continue;
         }
-
+        
         // 此时，确认用户已处于不活跃状态，现在判断是否应该发送消息
+
         const lastMessage = chat.history[chat.history.length - 1];
         const timeSinceLastMessage = now - lastMessage.timestamp;
-        
         // 如果未设置间隔，则默认使用初始延迟作为间隔
-        const intervalMs = (chat.aiProactiveChatInterval > 0 ? chat.aiProactiveChatInterval :
-            chat.aiProactiveChatDelay) * 60 * 1000;
+        const intervalMs = (chat.aiProactiveChatInterval > 0 ? chat.aiProactiveChatInterval : chat.aiProactiveChatDelay) * 60 * 1000;
 
-        // 核心判断逻辑
-        if (lastMessage.role === 'user' || (lastMessage.role === 'assistant' &&
-            timeSinceLastMessage > intervalMs)) {
-            
-            // === 核心修改：加入“自主决定”概率 (70% 概率触发) ===
-            // 每次检查（每分钟）只有 70% 的概率触发。
-            // 这意味着 AI 不会像机器人一样卡点回复，而是会有随机的“延迟感”和“犹豫感”。
-            if (Math.random() > 0.7) {
-                console.log(`[拟人化] ${chat.remarkName || chat.name} 决定此时暂不打扰，稍后再看。`);
-                continue; 
-            }
-            // === 修改结束 ===
-
-            console.log(`检测到不活跃聊天: ${chat.name || chat.remarkName}。触发 AI 后台回复。`);
+        // 在以下两种情况下发送消息：
+        // 1. 最后一条消息是用户发的（说明这是第一次触发后台回复）。
+        // 2. 最后一条消息是AI发的（说明是后续的后台回复），且距离上次发送已超过设定的间隔时间。
+        if (lastMessage.role === 'user' || (lastMessage.role === 'assistant' && timeSinceLastMessage > intervalMs)) {
+            console.log(`检测到不活跃聊天: ${chat.name || chat.remarkName}。触发AI后台回复。`);
             
             if (type === 'private') {
                 await triggerProactivePrivateReply(chat);
             } else {
                 await triggerProactiveGroupReply(chat);
             }
-
-            // 等待 5 秒，避免对 API 造成过大压力
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            // 等待5秒，避免对API造成过大压力
+            await new Promise(resolve => setTimeout(resolve, 5000)); 
         }
     }
+
     isCheckingInactivity = false;
 }
 
@@ -24369,60 +24150,28 @@ async function triggerProactiveGroupReply(group) {
 // --- 新代码开始 ---
 
 // --- 新代码开始 ---
-// ▼▼▼ 第三步：完整替换 triggerProactiveMessage 函数 (注入精准时间感知) ▼▼▼
 async function triggerProactiveMessage(chatObject, type) {
     let systemPrompt = '';
-    const now = Date.now();
-
-    // === 核心修改：构建时间感知信息 ===
-    let timeContext = "";
-    
-    // 检查是否开启了“时间感知加强”
-    if (db.apiSettings && db.apiSettings.timePerceptionEnabled) {
-        // 1. 获取当前精确时间
-        const nowDate = new Date();
-        const weekDays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-        const currentTimeStr = `${nowDate.getFullYear()}年${nowDate.getMonth() + 1}月${nowDate.getDate()}日 ${weekDays[nowDate.getDay()]} ${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`;
-        
-        // 2. 计算距离上次用户发言的时间差
-        let timeGapStr = "一段时间";
-        const lastUserMsg = [...chatObject.history].reverse().find(m => m.role === 'user');
-        if (lastUserMsg) {
-            timeGapStr = formatTimeGap(now - lastUserMsg.timestamp);
-        }
-
-        // 3. 组合成提示词
-        timeContext = `(重要参考信息：当前现实时间是 ${currentTimeStr}。距离用户上一次回复你，已经过去了 ${timeGapStr}。)`;
-    }
-    // === 修改结束 ===
-
     if (type === 'private') {
-        systemPrompt = `[system: 用户 ${chatObject.myName} 已经有段时间没有回复了。${timeContext}
-请你根据自己的人设、当前的时间点以及我们之前的对话，主动发起一个新的话题，或者用自然的方式询问对方正在做什么。
-**注意**：请根据“过去的时间长短”来决定你的语气。如果只过了几分钟，不要表现得像过了好几年一样；如果过了好几天，可以表现得更思念或担忧。回复必须自然，就像是真实的人在微信上发消息一样。]`;
+        systemPrompt = `[system: 用户 ${chatObject.myName} 已经有段时间没有回复了。请你根据自己的人设和我们之前的对话，主动发起一个新的话题或者用温柔的方式询问对方正在做什么，来重新激活对话。你的回复必须自然，就像是真实的人在关心对方一样。]`;
     } else { // group
-        systemPrompt = `[system: 用户 ${chatObject.me.nickname} 已经有段时间没有在群里说话了。${timeContext}
-请你们（AI 成员们）根据各自的人设，开始一段自然的群聊来活跃气氛，或者尝试把话题引向用户感兴趣的方向。]`;
+        systemPrompt = `[system: 用户 ${chatObject.me.nickname} 已经有段时间没有在群里说话了。请你们（AI成员们）根据各自的人设，开始一段自然的群聊来活跃气氛。对话可以围绕最近的话题，也可以开启一个全新的、符合群聊氛围的话题。]`;
     }
-
     const proactivePromptMessage = {
-        id: `proactive_${now}`,
+        id: `proactive_${Date.now()}`,
         role: 'user',
         content: systemPrompt,
         parts: [{ type: 'text', text: systemPrompt }],
-        timestamp: now
+        timestamp: Date.now()
     };
-
     if (type === 'group') {
         proactivePromptMessage.senderId = 'user_me';
     }
-
     chatObject.history.push(proactivePromptMessage);
 
     try {
         let fullSystemPrompt;
         let historyForApi;
-
         if (type === 'private') {
             fullSystemPrompt = generatePrivateSystemPrompt(chatObject);
             historyForApi = chatObject.history.slice(-chatObject.maxMemory);
@@ -24430,29 +24179,38 @@ async function triggerProactiveMessage(chatObject, type) {
             fullSystemPrompt = generateGroupSystemPrompt(chatObject);
             historyForApi = chatObject.history.slice(-chatObject.maxMemory);
         }
-
         const messages = [
             { role: 'system', content: fullSystemPrompt },
             ...historyForApi.map(msg => ({ role: msg.role, content: msg.content }))
         ];
-
         const aiResponseText = await callAiApi(messages);
-
-        // 重要：在处理回复前，先从历史记录中移除我们添加的系统指令，避免污染历史
+        
+        // 重要：在处理回复前，先从历史记录中移除我们添加的系统指令
         chatObject.history.pop();
-
+        
         const cleanedResponse = await processAiCommands(aiResponseText, chatObject);
+
+// ▼▼▼ 核心修复：使用正则表达式替换简单的 split('\n') ▼▼▼
         const messageRegex = /(\[[\s\S]*?\]|<div class="ai-theater"[\s\S]*?<\/div>)/g;
         let replies = cleanedResponse.match(messageRegex) || [];
 
-        // 线下模式补丁
-        if (replies.length === 0 && chatObject.isOfflineMode && cleanedResponse.trim().length > 0) {
-             const fixedContent = `[${chatObject.realName}的消息：${cleanedResponse.trim()}]`;
-             replies = [fixedContent];
+        // --- 【线下模式修复补丁 START】 ---
+        // 如果是线下模式，且AI没有返回标准格式（replies为空），但确实有内容
+        // 我们就强制认为整段话都是AI的消息，并自动帮它加上格式
+        if (replies.length === 0 && chat.isOfflineMode && cleanedResponse.trim().length > 0) {
+            console.log("检测到线下模式AI未按格式回复，正在自动修正...");
+            // 自动包裹成标准格式：[角色名的消息：AI回复的内容]
+            const fixedContent = `[${chat.realName}的消息：${cleanedResponse.trim()}]`;
+            replies = [fixedContent];
         }
+        // --- 【线下模式修复补丁 END】 ---
+        
+        // ▲▲▲ 修复结束 ▲▲▲
 
         if (replies.length > 0) {
+            // 遍历AI返回的每一句话
             for (const replyContent of replies) {
+                // 为每一句话创建一个独立的消息对象
                 const message = {
                     id: `msg_proactive_${Date.now()}_${Math.random()}`,
                     role: 'assistant',
@@ -24461,6 +24219,7 @@ async function triggerProactiveMessage(chatObject, type) {
                     timestamp: Date.now(),
                 };
 
+                // 如果是群聊，正确地找出并设置发送者ID
                 if (type === 'group') {
                     const nameMatch = replyContent.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)：/);
                     if (nameMatch) {
@@ -24470,15 +24229,21 @@ async function triggerProactiveMessage(chatObject, type) {
                         }
                     }
                 }
+                
+                // 将这个独立的消息对象添加到历史记录中
                 chatObject.history.push(message);
             }
 
+            // 在所有消息都添加完毕后，进行一次性的保存和UI更新
             await saveData();
             renderChatList();
-
+    
+            // 检查当前更新的聊天是否就是屏幕上正在显示的聊天
             if (chatObject.id === currentChatId) {
-                renderMessages(false, true);
+                // 如果是，则立即刷新聊天界面以显示所有新消息
+                renderMessages(false, true); 
             } else {
+                // 如果不是（例如用户在其他界面），才发送顶部横幅通知
                 addNotificationToQueue({
                     avatar: chatObject.avatar,
                     text: `<strong>${chatObject.name || chatObject.remarkName}</strong><br>给你发来了一条新消息...`,
@@ -24489,11 +24254,11 @@ async function triggerProactiveMessage(chatObject, type) {
         }
 
     } catch (error) {
-        console.error(`AI 后台回复失败 for ${chatObject.name || chatObject.remarkName}:`, error);
-        chatObject.history.pop(); // 出错也要移除指令
+        console.error(`AI后台回复失败 for ${chatObject.name || chatObject.remarkName}:`, error);
+        // 如果出错，也要移除系统指令，防止污染聊天记录
+        chatObject.history.pop();
     }
 }
-
 // --- 新代码结束 ---
 // --- 新代码结束 ---
 /**
