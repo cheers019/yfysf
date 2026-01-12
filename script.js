@@ -2480,6 +2480,50 @@ function findBoundCharacter() {
     if (!db || !db.characters) return null;
     return db.characters.find(c => c.isSoulBound === true);
 }
+
+/**
+ * 管理伴侣名册（最多2个角色ID）
+ * @param {string} charId - 角色ID
+ * @param {string} action - 操作类型：'add' | 'remove' | 'get'
+ * @returns {Array<string>} - 返回当前的ID数组（action为'get'时）
+ */
+function updateBondRoster(charId, action) {
+    const ROSTER_KEY = 'soul_bond_roster';
+    
+    try {
+        let roster = JSON.parse(localStorage.getItem(ROSTER_KEY) || '[]');
+        
+        if (action === 'add') {
+            // 如果角色ID不在列表中
+            if (!roster.includes(charId)) {
+                if (roster.length < 2) {
+                    // 名册未满，直接添加
+                    roster.push(charId);
+                } else {
+                    // 名册已满（2个角色），保持名册不变（最多2个）
+                    // 注意：调用方需要自己处理激活/休眠逻辑
+                    console.log('伴侣名册已满（最多2个角色），保持名册不变');
+                }
+            }
+            // 如果角色ID已在列表中，不做任何操作
+            localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
+            return roster;
+        } else if (action === 'remove') {
+            // 从列表中移除角色ID
+            roster = roster.filter(id => id !== charId);
+            localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
+            return roster;
+        } else if (action === 'get') {
+            // 返回当前的ID数组
+            return roster;
+        }
+        
+        return roster;
+    } catch (error) {
+        console.error('更新伴侣名册时出错:', error);
+        return [];
+    }
+}
 // ▼▼▼ 在 init() 函数的正上方，粘贴下面这个完整的新函数 ▼▼▼
 /**
  * 处理续写按钮的点击事件，向AI请求继续生成内容。
@@ -6878,6 +6922,9 @@ if (data.character_book && data.character_book.entries && data.character_book.en
                 const lastMsgTimeB = b.history && b.history.length > 0 ? b.history[b.history.length - 1].timestamp : 0;
                 return lastMsgTimeB - lastMsgTimeA;
             });
+            // ▼▼▼ 性能优化：在循环外获取一次伴侣名册 ▼▼▼
+            const roster = updateBondRoster(null, 'get');
+            // ▲▲▲ 性能优化结束 ▲▲▲
             sortedChats.forEach(chat => {
                 let lastMessageText = '开始聊天吧...';
                 if (chat.history && chat.history.length > 0) {
@@ -6939,13 +6986,18 @@ if (data.character_book && data.character_book.entries && data.character_book.en
                 const itemName = chat.type === 'private' ? chat.remarkName : chat.name;
                     // ▼▼▼ 核心修改 1：使用新的SVG图标 ▼▼▼
         let soulBondIconHTML = '';
-        if (chat.type === 'private' && chat.isSoulBound) {
-            soulBondIconHTML = `
-                <span class="soul-bond-icon" data-char-id="${chat.id}" title="解除心动关系">
-                    <svg class="soul-bond-icon-svg" viewBox="0 0 24 24">
-                        <path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z"></path>
-                    </svg>
-                </span>`;
+        if (chat.type === 'private') {
+            // ▼▼▼ UI显示修复：显示所有已绑定的伴侣（包括休眠状态）▼▼▼
+            // 只要角色ID在名册里，或者状态为 active，都显示爱心
+            if (roster.includes(chat.id) || chat.soulBondStatus === 'active') {
+                soulBondIconHTML = `
+                    <span class="soul-bond-icon" data-char-id="${chat.id}" title="解除心动关系">
+                        <svg class="soul-bond-icon-svg" viewBox="0 0 24 24">
+                            <path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z"></path>
+                        </svg>
+                    </span>`;
+            }
+            // ▲▲▲ UI显示修复结束 ▲▲▲
         }
         // ▲▲▲ 修改结束 ▲▲▲
                 const pinBadgeHTML = chat.isPinned ? '<span class="pin-badge">置顶</span>' : '';
@@ -6975,6 +7027,9 @@ if (data.character_book && data.character_book.entries && data.character_book.en
             if (!character) return;
             
             if (confirm(`你确定要与 ${character.remarkName} 解除心动关系吗？`)) {
+                // 从伴侣名册中移除
+                updateBondRoster(charId, 'remove');
+                
                 // 更新角色状态
                 character.isSoulBound = false;
                 character.soulBondStatus = 'none';
@@ -7374,13 +7429,27 @@ async function handleBondRequestResponse(messageId, response) {
 
     // 2. 更新角色的心动状态
     if (response === 'accepted') {
-        // 解绑所有其他AI
-        db.characters.forEach(c => {
-            if (c.id !== character.id) {
-                c.isSoulBound = false;
-                c.soulBondStatus = 'none';
+        // 使用伴侣名册管理机制
+        const roster = updateBondRoster(character.id, 'add');
+        
+        if (roster.length === 2) {
+            // 如果名册已满（2个角色），找到另一个角色并休眠
+            const otherCharId = roster.find(id => id !== character.id);
+            const otherCharacter = db.characters.find(c => c.id === otherCharId);
+            if (otherCharacter) {
+                otherCharacter.isSoulBound = false; // 休眠，但保留 soulBondStatus 为 'active'
+                // 注意：我们不改变 otherCharacter.soulBondStatus，保持为 'active'
             }
-        });
+        } else {
+            // 如果名册未满，将所有其他角色解绑（清除绑定状态）
+            db.characters.forEach(c => {
+                if (c.id !== character.id) {
+                    c.isSoulBound = false;
+                    c.soulBondStatus = 'none';
+                }
+            });
+        }
+        
         // 绑定当前AI
         character.isSoulBound = true;
         character.soulBondStatus = 'active';
@@ -7858,9 +7927,21 @@ function createMessageBubbleElement(message) {
     let isRenderedByRule = false;
 
     let rawText = content;
-    const textMatchForRender = content.match(/\[(?:.+?)的消息：([\s\S]+?)\]/);
-    if (textMatchForRender) {
+    // 🆕 放宽正则匹配：支持中英文冒号，允许空格
+    const textMatchForRender = content.match(/\[(?:.+?)的消息[:：]\s*([\s\S]+?)\]/);
+    if (textMatchForRender && textMatchForRender[1]) {
         rawText = textMatchForRender[1].trim();
+    } else {
+        // 🆕 保底机制：如果正则匹配失败，尝试提取原始内容
+        if (rawText.startsWith('[') && rawText.endsWith(']')) {
+            const looseMatch = rawText.match(/\[.*?[:：]\s*(.*?)\]/s);
+            if (looseMatch && looseMatch[1]) {
+                rawText = looseMatch[1].trim();
+            } else {
+                // 完全无法匹配，去掉首尾方括号后使用
+                rawText = rawText.slice(1, -1).trim();
+            }
+        }
     }
     
     const renderResult = applyAdvancedRenderingRules(rawText, currentChatId, isSent ? 'user' : 'ai');
@@ -7895,7 +7976,8 @@ function createMessageBubbleElement(message) {
         const privateGiftRegex = /\[(?:.+?)送来的礼物：([\s\S]+?)\]/;
         const groupGiftRegex = /\[(.*?)\s*向\s*(.*?)\s*送来了礼物：([\s\S]+?)\]/; 
         const imageRecogRegex = /\[.*?发来了一张图片：\]/;
-        const textRegex = /\[(?:.+?)的消息：([\s\S]+?)\]/;
+        // 🆕 放宽正则匹配：支持中英文冒号，允许空格
+        const textRegex = /\[(?:.+?)的消息[:：]\s*([\s\S]+?)\]/;
         const fileRegex = /\[(?:.+?)发送了文件：(\{[\s\S]*?\})\]/;
 
         const aiQuoteMatch = content.match(aiQuoteRegex);
@@ -8493,72 +8575,60 @@ async function sendMessage(targetInput = null) {
     }
 }
 
-// ===== 🆕 日记触发里程碑检查函数（Checkpoint 方案） =====
+// ===== 🆕 日记触发里程碑检查函数（Checkpoint 纯净版） =====
 /**
- * 检查是否应该触发日记生成（基于里程碑方案）
- * @param {Object} character - 角色对象
- * @returns {boolean} 是否触发了日记生成
+ * 检查是否应该触发日记生成
+ * 逻辑：每 200 条有效对话（排除系统隐藏消息），有 90% 概率触发一次
  */
 function checkDiaryTriggerByCheckpoint(character) {
-    // 安全检查：确保角色和聊天记录存在
-    if (!character || !character.id) {
-        console.warn('⚠️ [日记检查] 角色对象无效');
+    // 1. 安全检查
+    if (!character || !character.id) return false;
+    
+    // 2. 精准计算有效消息长度（排除 system 和 伪装成 user 的 hidden 消息）
+    const chatHistory = character.history;
+    const currentTotalLength = (chatHistory && Array.isArray(chatHistory))
+        ? chatHistory.filter(m => 
+            (m.role === 'user' || m.role === 'assistant') && 
+            m.content && 
+            !m.content.startsWith('[system')
+          ).length
+        : 0;
+    
+    // 3. 获取里程碑
+    const STORAGE_KEY = `diary_last_gen_count_${character.id}`;
+    let lastGenLength = parseInt(localStorage.getItem(STORAGE_KEY), 10);
+    
+    // 4. 自动纠错（如果算法改变导致计数回退，静默重置）
+    if (isNaN(lastGenLength) || lastGenLength < 0 || currentTotalLength < lastGenLength) {
+        lastGenLength = currentTotalLength;
+        localStorage.setItem(STORAGE_KEY, lastGenLength.toString());
         return false;
     }
     
-    // 安全获取聊天记录长度
-    const chatHistory = character.history;
-    const currentTotalLength = (chatHistory && Array.isArray(chatHistory) && chatHistory.length) 
-        ? chatHistory.length 
-        : 0;
-    
-    // 1. 定义存储 key，必须包含当前角色ID，防止不同角色串台
-    const STORAGE_KEY = `diary_last_gen_count_${character.id}`;
-    
-    // 2. 获取上次生成日记时的长度（如果没有记录，就初始化为当前长度，避免旧号上线立刻触发）
-    let lastGenLength = parseInt(localStorage.getItem(STORAGE_KEY), 10);
-    if (isNaN(lastGenLength) || lastGenLength < 0) {
-        lastGenLength = currentTotalLength;
-        localStorage.setItem(STORAGE_KEY, lastGenLength.toString());
-        console.log(`🔵 [日记检查] 角色 "${character.remarkName || character.id}" 首次检查，初始化里程碑为 ${lastGenLength}`);
-        return false; // 首次初始化不触发
-    }
-    
-    // 3. 计算新增条数
+    // 5. 计算差值
     const delta = currentTotalLength - lastGenLength;
     
-    // 4. 判断条件：新增超过200条
+    // 6. 触发判断：每 200 条有效消息
     if (delta >= 200) {
-        console.log(`🔵 [日记检查] 角色 "${character.remarkName || character.id}" 新增消息 ${delta} 条，满足日记生成条件，正在进行概率判定...`);
-        
         // 90% 概率触发
         if (Math.random() < 0.9) {
             console.log(`✅ [日记检查] 概率命中！开始生成日记...`);
             
-            // 调用原有的生成日记函数
+            // 执行生成
             if (typeof generateDiaryEntry === 'function') {
-                generateDiaryEntry(character.id);
-            } else {
-                console.warn('⚠️ [日记检查] generateDiaryEntry 函数不存在');
+                generateDiaryEntry(character.id).catch(err => {
+                    console.error('❌ [日记调度] 执行出错:', err);
+                });
             }
             
-            // 关键：更新里程碑（只有真正触发了，才更新这个里程碑）
+            // 只有触发成功才更新里程碑
             localStorage.setItem(STORAGE_KEY, currentTotalLength.toString());
-            console.log(`✅ [日记检查] 里程碑已更新为 ${currentTotalLength}`);
-            
             return true;
-        } else {
-            console.log(`⏭️ [日记检查] 概率未命中（10%），跳过本次生成。下次将在 ${delta + 1} 条时继续尝试。`);
-            // 不更新里程碑，让它在201、202条时继续尝试，直到命中为止，这样能保证一定会写
-            return false;
-        }
-    } else {
-        // 未达到200条，不触发
-        if (delta > 0) {
-            console.log(`📊 [日记检查] 角色 "${character.remarkName || character.id}" 新增 ${delta} 条，还需 ${200 - delta} 条达到触发条件`);
-        }
-        return false;
+        } 
+        // 概率未命中时不打印日志，不更新里程碑（下次继续尝试）
     }
+    
+    return false;
 }
 // ===== 日记触发里程碑检查函数结束 =====
 
@@ -9855,9 +9925,36 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
     const messageRegex = /(\[[\s\S]*?\]|<div class="ai-theater"[\s\S]*?<\/div>)/g;
     let replies = cleanedResponse.match(messageRegex) || [];
 
+    // 🆕 线下模式保底机制：如果正则匹配失败，使用原始文本
     if (replies.length === 0 && chat.isOfflineMode && cleanedResponse.trim().length > 0) {
         const fixedContent = `[${chat.realName}的消息：${cleanedResponse.trim()}]`;
         replies = [fixedContent];
+    }
+
+    // 🆕 额外保底：如果 cleanedResponse 有内容但 replies 为空（非线下模式也可能出现）
+    if (replies.length === 0 && cleanedResponse.trim().length > 0) {
+        console.warn('⚠️ [消息解析] 正则匹配失败，启用保底机制，使用原始文本');
+        // 尝试清理首尾可能的方括号，但保留内容
+        let fallbackContent = cleanedResponse.trim();
+        // 如果整个内容被方括号包裹，去掉首尾的方括号
+        if (fallbackContent.startsWith('[') && fallbackContent.endsWith(']')) {
+            fallbackContent = fallbackContent.slice(1, -1);
+        }
+        // 如果仍然没有标准格式，尝试提取实际内容
+        const looseMatch = fallbackContent.match(/.*?[:：]\s*(.*)/s);
+        if (looseMatch && looseMatch[1]) {
+            // 找到了冒号后的内容
+            const extractedText = looseMatch[1].trim();
+            if (extractedText.length > 0) {
+                // 使用角色名重新包装
+                const roleName = chat.realName || chat.remarkName || 'AI';
+                replies = [`[${roleName}的消息：${extractedText}]`];
+            }
+        } else {
+            // 完全无法解析，直接使用原始内容（去掉首尾方括号后）
+            const roleName = chat.realName || chat.remarkName || 'AI';
+            replies = [`[${roleName}的消息：${fallbackContent}]`];
+        }
     }
 
     if (replies.length > 0) {
@@ -9869,16 +9966,50 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
             firstMessageProcessed = true;
 
+            // 🆕 提取和验证消息内容（保底机制）
+            let finalContent = replyContent.trim();
+            
+            // 尝试用宽松的正则提取内容（支持中英文冒号，允许空格）
+            const contentMatch = finalContent.match(/\[.*?[:：]\s*([\s\S]+?)\]/s);
+            if (contentMatch && contentMatch[1] && contentMatch[1].trim().length > 0) {
+                // 成功提取，使用提取的内容重新包装（确保格式统一）
+                const extractedText = contentMatch[1].trim();
+                const roleName = chat.realName || chat.remarkName || 'AI';
+                finalContent = `[${roleName}的消息：${extractedText}]`;
+            } else {
+                // 🚨 关键保底：正则匹配失败，检查原始内容
+                if (finalContent.trim().length === 0) {
+                    console.error('❌ [消息解析] 提取的内容为空，跳过此消息');
+                    continue; // 跳过空消息
+                }
+                // 如果原始内容不为空，但格式不匹配，尝试清理后使用
+                let cleanedText = finalContent;
+                // 去掉首尾可能的方括号
+                if (cleanedText.startsWith('[') && cleanedText.endsWith(']')) {
+                    cleanedText = cleanedText.slice(1, -1).trim();
+                }
+                // 如果清理后仍有内容，使用它
+                if (cleanedText.length > 0) {
+                    const roleName = chat.realName || chat.remarkName || 'AI';
+                    finalContent = `[${roleName}的消息：${cleanedText}]`;
+                    console.warn('⚠️ [消息解析] 格式不匹配，使用清理后的原始文本');
+                } else {
+                    console.error('❌ [消息解析] 清理后内容仍为空，跳过此消息');
+                    continue; // 跳过空消息
+                }
+            }
+
             const message = {
                 id: `msg_${Date.now()}_${Math.random()}`,
                 role: 'assistant',
-                content: replyContent.trim(),
-                parts: [{ type: 'text', text: replyContent.trim() }],
+                content: finalContent,
+                parts: [{ type: 'text', text: finalContent }],
                 timestamp: Date.now(),
             };
 
             if (targetChatType === 'group') {
-                const nameMatch = replyContent.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)：/);
+                // 🆕 放宽正则匹配：支持中英文冒号
+                const nameMatch = message.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)[:：]/);
                 if (nameMatch) {
                     const sender = chat.members.find(m => m.realName === nameMatch[1] || m.groupNickname === nameMatch[1]);
                     if (sender) message.senderId = sender.id;
@@ -10489,10 +10620,27 @@ async function processStream(response, chat, apiType) {
                 if (pendingRequest) {
                     pendingRequest.bondRequestData.status = 'accepted';
                 }
-                db.characters.forEach(c => {
-                    c.isSoulBound = false;
-                    c.soulBondStatus = 'none';
-                });
+                // 使用伴侣名册管理机制
+                const roster = updateBondRoster(character.id, 'add');
+                
+                if (roster.length === 2) {
+                    // 如果名册已满（2个角色），找到另一个角色并休眠
+                    const otherCharId = roster.find(id => id !== character.id);
+                    const otherCharacter = db.characters.find(c => c.id === otherCharId);
+                    if (otherCharacter) {
+                        otherCharacter.isSoulBound = false; // 休眠，但保留 soulBondStatus 为 'active'
+                        // 注意：我们不改变 otherCharacter.soulBondStatus，保持为 'active'
+                    }
+                } else {
+                    // 如果名册未满，将所有其他角色解绑（清除绑定状态）
+                    db.characters.forEach(c => {
+                        if (c.id !== character.id) {
+                            c.isSoulBound = false;
+                            c.soulBondStatus = 'none';
+                        }
+                    });
+                }
+                
                 character.isSoulBound = true;
                 character.soulBondStatus = 'active';
                 const displayMsg = {
@@ -13093,18 +13241,29 @@ function setupApiSettingsApp() {
 // 用于生成日记的 AI 调用函数
 // START: 终极修复版 V3 (强制通用格式，解决空指令问题)
 async function generateDiaryEntry(characterId, isManual = false) {
-    if (isGenerating) return;
+    console.log('🚀 [调试] 进入 generateDiaryEntry 函数，ID:', characterId, '是否手动:', isManual, '当前 isGenerating 状态:', isGenerating);
+    
+    if (isGenerating) {
+        console.warn('⚠️ [日记阻断] 正在生成中，本次请求被拦截');
+        return;
+    }
     
     const character = db.characters.find(c => c.id === characterId);
-    if (!character) return;
+    if (!character) {
+        console.error('❌ [日记阻断] 数据库中找不到 ID 为 ' + characterId + ' 的角色');
+        return;
+    }
 
-    // 1. 过滤历史
+    // 1. 过滤历史（修复：移除对 "[" 开头的判断，因为正常消息也以 "[" 开头）
     const validHistory = character.history.filter(m => 
-        !m.content.startsWith('[') && 
-        (m.role === 'user' || m.role === 'assistant')
+        m.content && // 确保内容存在
+        (m.role === 'user' || m.role === 'assistant') // 只保留用户和AI的消息
     );
     
-    if (!isManual && validHistory.length < 5) return;
+    if (!isManual && validHistory.length < 5) {
+        console.warn('⚠️ [日记阻断] 有效历史消息只有 ' + validHistory.length + ' 条，不足 5 条，不生成');
+        return;
+    }
 
     if (isManual) showToast('正在请求AI撰写日记...');
 
@@ -16130,9 +16289,13 @@ function setupSoulBondApp() {
 
     // 打开设置弹窗 (爱心图标按钮)
     document.getElementById('bond-settings-btn').addEventListener('click', () => {
-     const characterId = document.getElementById('soul-bond-screen').dataset.characterId; // <-- 修复
-        const character = db.characters.find(c => c.id === characterId); // <-- 修复
-        if (!character) return;
+        // ▼▼▼ 数据错乱Bug修复：严格锁定当前激活角色 ▼▼▼
+        // 必须重新查找 isSoulBound === true 的角色，不信任任何缓存
+        const character = db.characters.find(c => c.isSoulBound === true);
+        if (!character) {
+            showToast('未找到激活的绑定角色');
+            return;
+        }
         
         const settings = character.soulBondData || {};
         document.getElementById('bond-my-name-input').value = settings.myName || character.myName;
@@ -16147,13 +16310,75 @@ function setupSoulBondApp() {
         document.getElementById('bond-background-url-input').value = settings.background || '';
         
         settingsModal.classList.add('visible');
+        // ▲▲▲ 数据错乱Bug修复结束 ▲▲▲
+    });
+
+    // 切换/添加伴侣按钮
+    document.getElementById('bond-switch-btn').addEventListener('click', async () => {
+        // ▼▼▼ Bug 2 修复：自动修复名册 + 严格的切换判断 ▼▼▼
+        // 1. 找到当前激活的角色（isSoulBound=true）
+        const currentActiveCharacter = db.characters.find(c => c.isSoulBound === true);
+        if (!currentActiveCharacter) {
+            showToast('未找到激活的绑定角色');
+            return;
+        }
+        const currentActiveCharId = currentActiveCharacter.id;
+        
+        // 2. 获取名册并自动修复（如果当前激活角色不在名册中，添加进去）
+        let roster = updateBondRoster(null, 'get');
+        if (!roster.includes(currentActiveCharId)) {
+            // 自动修复：将当前激活角色添加到名册
+            roster = updateBondRoster(currentActiveCharId, 'add');
+        }
+        
+        // 3. 严格的切换判断
+        if (roster.length < 2) {
+            // 情况 A：名册中角色数量 < 2，跳转到邀请界面
+            renderBondInvitationScreen();
+            switchScreen('bond-invitation-screen');
+        } else {
+            // 情况 B：名册中有 >= 2 个角色，执行切换逻辑
+            // 找到另一个与当前激活角色不同的角色ID
+            const otherCharId = roster.find(id => id !== currentActiveCharId);
+            const otherCharacter = db.characters.find(c => c.id === otherCharId);
+            
+            if (!otherCharacter) {
+                showToast('找不到另一个角色');
+                return;
+            }
+            
+            // 切换激活状态
+            currentActiveCharacter.isSoulBound = false;
+            // 保持 currentActiveCharacter.soulBondStatus 为 'active'（不改变）
+            
+            otherCharacter.isSoulBound = true;
+            otherCharacter.soulBondStatus = 'active';
+            
+            // 保存数据
+            await saveData();
+            
+            // 更新界面 dataset 并强制刷新
+            const soulBondScreen = document.getElementById('soul-bond-screen');
+            soulBondScreen.dataset.characterId = otherCharacter.id;
+            
+            // 强制刷新页面（重新读取新角色的数据）
+            renderSoulBondScreen();
+            showToast(`已切换到 ${otherCharacter.remarkName}`);
+        }
+        // ▲▲▲ Bug 2 修复结束 ▲▲▲
     });
 
     // 保存设置
     settingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const character = db.characters.find(c => c.id === currentChatId);
-        if (!character) return;
+        // ▼▼▼ 数据错乱Bug修复：严格锁定当前激活角色 ▼▼▼
+        // 必须重新查找 isSoulBound === true 的角色，不信任任何缓存变量
+        const character = db.characters.find(c => c.isSoulBound === true);
+        if (!character) {
+            showToast('未找到激活的绑定角色');
+            settingsModal.classList.remove('visible');
+            return;
+        }
 
         character.soulBondData = character.soulBondData || { photos: [], wishlist: [] };
         character.soulBondData.myName = document.getElementById('bond-my-name-input').value;
@@ -16174,6 +16399,7 @@ function setupSoulBondApp() {
         renderSoulBondScreen();
         settingsModal.classList.remove('visible');
         showToast('设置已保存');
+        // ▲▲▲ 数据错乱Bug修复结束 ▲▲▲
     });
 
     // --- 核心修复：“添加回忆照片”按钮现在打开自定义上传弹窗 ---
@@ -16200,8 +16426,14 @@ function setupSoulBondApp() {
     // 保存自定义照片
     customPhotoForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const character = db.characters.find(c => c.id === currentChatId);
-        if (!character) return;
+        // ▼▼▼ 数据错乱Bug修复：严格锁定当前激活角色 ▼▼▼
+        const character = db.characters.find(c => c.isSoulBound === true);
+        if (!character) {
+            showToast('未找到激活的绑定角色');
+            addCustomPhotoModal.classList.remove('visible');
+            return;
+        }
+        // ▲▲▲ 数据错乱Bug修复结束 ▲▲▲
         
         const imageUrl = document.getElementById('custom-photo-preview').style.backgroundImage.slice(5, -2);
         const description = document.getElementById('custom-photo-desc').value.trim();
@@ -16566,16 +16798,23 @@ function renderSoulBondScreen() {
     const character = db.characters.find(c => c.id === characterId);
     if (!character) return;
 
-    const settings = character.soulBondData || {};
+    // ▼▼▼ Bug 1 修复：强制从当前角色重新读取 soulBondData，不依赖任何缓存 ▼▼▼
+    const soulBondData = character.soulBondData || {};
+    const myName = soulBondData.myName || character.myName;
+    const aiName = soulBondData.aiName || character.remarkName;
+    const background = soulBondData.background || '';
+    const anniversaryInfo = soulBondData.anniversaryInfo || null;
+    const photos = soulBondData.photos || [];
+    // ▲▲▲ Bug 1 修复结束 ▲▲▲
 
     const screenContent = document.querySelector('#soul-bond-screen .content');
-    screenContent.style.backgroundImage = settings.background ? `url('${settings.background}')` : 'none';
-    screenContent.style.backgroundColor = settings.background ? '' : '#fff8fa';
+    screenContent.style.backgroundImage = background ? `url('${background}')` : 'none';
+    screenContent.style.backgroundColor = background ? '' : '#fff8fa';
 
     document.getElementById('bond-my-avatar').src = character.myAvatar;
-    document.getElementById('bond-my-name').textContent = settings.myName || character.myName;
+    document.getElementById('bond-my-name').textContent = myName;
     document.getElementById('bond-ai-avatar').src = character.avatar;
-    document.getElementById('bond-ai-name').textContent = settings.aiName || character.remarkName;
+    document.getElementById('bond-ai-name').textContent = aiName;
     
     // ▼▼▼ 核心修改：给爱心 SVG 添加 id 和 title ▼▼▼
     const bondAvatarsContainer = document.querySelector('.bond-avatars');
@@ -16583,21 +16822,21 @@ function renderSoulBondScreen() {
         bondAvatarsContainer.innerHTML = `
             <div class="bond-avatar-container">
                 <img id="bond-my-avatar" src="${character.myAvatar}">
-                <span id="bond-my-name">${settings.myName || character.myName}</span>
+                <span id="bond-my-name">${myName}</span>
             </div>
             <svg id="bond-miss-you-btn" class="bond-heart" viewBox="0 0 24 24" title="想你啦（双击表示超级想你）">
                 <path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z" />
             </svg>
             <div class="bond-avatar-container">
                 <img id="bond-ai-avatar" src="${character.avatar}">
-                <span id="bond-ai-name">${settings.aiName || character.remarkName}</span>
+                <span id="bond-ai-name">${aiName}</span>
             </div>
         `;
     }
     // ▲▲▲ 修改结束 ▲▲▲
 
-    if (settings.anniversaryInfo && settings.anniversaryInfo.date) {
-        const startDate = new Date(settings.anniversaryInfo.date);
+    if (anniversaryInfo && anniversaryInfo.date) {
+        const startDate = new Date(anniversaryInfo.date);
         const now = new Date();
         const totalDays = Math.floor((now - startDate) / (1000 * 60 * 60 * 24));
         document.getElementById('bond-total-days').textContent = totalDays >= 0 ? totalDays : 0;
@@ -16612,7 +16851,7 @@ function renderSoulBondScreen() {
         const countdownDays = Math.ceil((nextAnniversaryDate - now) / (1000 * 60 * 60 * 24));
         document.getElementById('bond-countdown-days').textContent = countdownDays;
         
-        const anniversaryDescription = settings.anniversaryInfo.description || '下一个纪念日';
+        const anniversaryDescription = anniversaryInfo.description || '下一个纪念日';
         document.querySelector('.bond-anniversary p').textContent = `距离 ${anniversaryDescription} 还有`;
     } else {
         document.getElementById('bond-total-days').textContent = '...';
@@ -16622,7 +16861,6 @@ function renderSoulBondScreen() {
 
     const photoScroll = document.getElementById('bond-photo-scroll');
     photoScroll.innerHTML = '';
-    const photos = settings.photos || [];
     if (photos.length > 0) {
         photos.forEach(photo => {
             const item = document.createElement('div');
@@ -18659,24 +18897,74 @@ async function triggerProactiveMessage(chatObject, type) {
         const messageRegex = /(\[[\s\S]*?\]|<div class="ai-theater"[\s\S]*?<\/div>)/g;
         let replies = cleanedResponse.match(messageRegex) || [];
 
-        // 线下模式补丁
+        // 🆕 线下模式保底机制：如果正则匹配失败，使用原始文本
         if (replies.length === 0 && chatObject.isOfflineMode && cleanedResponse.trim().length > 0) {
              const fixedContent = `[${chatObject.realName}的消息：${cleanedResponse.trim()}]`;
              replies = [fixedContent];
         }
 
+        // 🆕 额外保底：如果 cleanedResponse 有内容但 replies 为空
+        if (replies.length === 0 && cleanedResponse.trim().length > 0) {
+            console.warn('⚠️ [主动聊天-消息解析] 正则匹配失败，启用保底机制，使用原始文本');
+            let fallbackContent = cleanedResponse.trim();
+            if (fallbackContent.startsWith('[') && fallbackContent.endsWith(']')) {
+                fallbackContent = fallbackContent.slice(1, -1);
+            }
+            const looseMatch = fallbackContent.match(/.*?[:：]\s*(.*)/s);
+            if (looseMatch && looseMatch[1]) {
+                const extractedText = looseMatch[1].trim();
+                if (extractedText.length > 0) {
+                    const roleName = chatObject.realName || chatObject.remarkName || 'AI';
+                    replies = [`[${roleName}的消息：${extractedText}]`];
+                }
+            } else {
+                const roleName = chatObject.realName || chatObject.remarkName || 'AI';
+                replies = [`[${roleName}的消息：${fallbackContent}]`];
+            }
+        }
+
         if (replies.length > 0) {
             for (const replyContent of replies) {
+                // 🆕 提取和验证消息内容（保底机制）
+                let finalContent = replyContent.trim();
+                
+                // 尝试用宽松的正则提取内容（支持中英文冒号，允许空格）
+                const contentMatch = finalContent.match(/\[.*?[:：]\s*([\s\S]+?)\]/s);
+                if (contentMatch && contentMatch[1] && contentMatch[1].trim().length > 0) {
+                    const extractedText = contentMatch[1].trim();
+                    const roleName = chatObject.realName || chatObject.remarkName || 'AI';
+                    finalContent = `[${roleName}的消息：${extractedText}]`;
+                } else {
+                    // 🚨 关键保底：正则匹配失败，检查原始内容
+                    if (finalContent.trim().length === 0) {
+                        console.error('❌ [主动聊天-消息解析] 提取的内容为空，跳过此消息');
+                        continue;
+                    }
+                    let cleanedText = finalContent;
+                    if (cleanedText.startsWith('[') && cleanedText.endsWith(']')) {
+                        cleanedText = cleanedText.slice(1, -1).trim();
+                    }
+                    if (cleanedText.length > 0) {
+                        const roleName = chatObject.realName || chatObject.remarkName || 'AI';
+                        finalContent = `[${roleName}的消息：${cleanedText}]`;
+                        console.warn('⚠️ [主动聊天-消息解析] 格式不匹配，使用清理后的原始文本');
+                    } else {
+                        console.error('❌ [主动聊天-消息解析] 清理后内容仍为空，跳过此消息');
+                        continue;
+                    }
+                }
+
                 const message = {
                     id: `msg_proactive_${Date.now()}_${Math.random()}`,
                     role: 'assistant',
-                    content: replyContent.trim(),
-                    parts: [{ type: 'text', text: replyContent.trim() }],
+                    content: finalContent,
+                    parts: [{ type: 'text', text: finalContent }],
                     timestamp: Date.now(),
                 };
 
                 if (type === 'group') {
-                    const nameMatch = replyContent.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)：/);
+                    // 🆕 放宽正则匹配：支持中英文冒号
+                    const nameMatch = message.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)[:：]/);
                     if (nameMatch) {
                         const sender = chatObject.members.find(m => m.realName === nameMatch[1] || m.groupNickname === nameMatch[1]);
                         if (sender) {
@@ -19081,7 +19369,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 }
               ]
            }
-           请为 ${char.realName} 编造3-5个最近的对话。对话内容需要强烈反映Ta的人设以及和我的聊天上下文。`;
+           请为 ${char.realName} 编造5-7个最近的对话。对话内容需要强烈反映Ta的人设以及和我的聊天上下文。`;
             break;
         case 'album':
             prompt += `
@@ -19091,7 +19379,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 { "type": "video", "imageDescription": "对一段视频的详细文字描述，例如：一段在猫咖撸猫的视频，视频里有一只橘猫在打哈欠。", "description": "角色对这段视频的一句话批注，例如：下次还来这里！" }
               ]
             }
-            请为 ${char.realName} 的相册生成5-8个条目（照片或视频）。内容需要与Ta的人设和我们的聊天上下文高度相关。'imageDescription' 是对这张照片/视频的详细文字描述，它将代替真实的图片展示给用户。'description' 是 ${char.realName} 自己对这张照片/视频的一句话批注，会显示在描述下方。`;
+            请为 ${char.realName} 的相册生成8-10个条目（照片或视频）。内容需要与Ta的人设和我们的聊天上下文高度相关。'imageDescription' 是对这张照片/视频的详细文字描述，它将代替真实的图片展示给用户。'description' 是 ${char.realName} 自己对这张照片/视频的一句话批注，会显示在描述下方。`;
             break;
         case 'memos':
             prompt += `
@@ -19100,7 +19388,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 { "id": "memo_1", "title": "备忘录标题", "content": "备忘录内容，可以包含换行符\\n" }
               ]
             }
-            请生成3-4条备忘录，内容要与Ta的人设和我们的聊天上下文相关。`;
+            请生成6-10条备忘录，内容要与Ta的人设和我们的聊天上下文相关。`;
             break;
         case 'cart':
             prompt += `
@@ -19109,7 +19397,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 { "id": "cart_1", "title": "商品标题", "spec": "商品规格", "price": "25.00" }
               ]
             }
-            请生成3-4件商品，这些商品应该反映Ta的兴趣、需求或我们最近聊到的话题。`;
+            请生成5-8件商品，这些商品应该反映Ta的兴趣、需求或我们最近聊到的话题。`;
             break;
         case 'browser':
             prompt += `
@@ -19118,7 +19406,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 { "title": "网页标题", "url": "example.com/path", "annotation": "角色对于这条浏览记录的想法或批注" }
               ]
             }
-            请生成3-5条浏览记录。记录本身要符合Ta的人设和我们的聊天上下文，'annotation'字段则要站在角色自己的视角，记录Ta对这条浏览记录的想法或批注。`;
+            请生成5-8条浏览记录。记录本身要符合Ta的人设和我们的聊天上下文，'annotation'字段则要站在角色自己的视角，记录Ta对这条浏览记录的想法或批注。`;
             break;
        case 'transfer':
            prompt += `
@@ -19129,7 +19417,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                "刚刚那个想法不错，可以深入一下..."
              ]
            }
-           请为 ${char.realName} 生成4-7条Ta发送给自己的、简短零碎的消息。这些内容应该像是Ta的临时备忘、灵感闪现或随手保存的链接，要与Ta的人设和我们的聊天上下文相关，但比"备忘录"应用的内容更随意、更口语化。`;
+           请为 ${char.realName} 生成5-8条Ta发送给自己的、简短零碎的消息。这些内容应该像是Ta的临时备忘、灵感闪现或随手保存的链接，要与Ta的人设和我们的聊天上下文相关，但比"备忘录"应用的内容更随意、更口语化。`;
            break;
         case 'unlock':
             prompt += `
@@ -19143,7 +19431,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 { "timestamp": "3天前", "content": "第三条微博正文内容。" }
               ]
             }
-            请为 ${char.realName} 生成一个符合其人设的微博小号。你需要生成昵称、ID、个性签名，以及3-4条最近的微博。微博内容要生活化、碎片化，符合小号的风格，并与Ta的人设和我们的聊天上下文高度相关。`;
+            请为 ${char.realName} 生成一个符合其人设的微博小号。你需要生成昵称、ID、个性签名，以及4-6条最近的微博。微博内容要生活化、碎片化，符合小号的风格，并与Ta的人设和我们的聊天上下文高度相关。`;
             break;
 
             case 'signal':
@@ -19333,38 +19621,37 @@ async function generateAndRenderPeekContent(appType, char, options = {}) {
         }
         
         const result = await response.json();
-        const contentStr = result.choices[0].message.content;
+        let contentStr = result.choices[0].message.content;
         
-        console.log("AI原始返回:", contentStr); // 方便调试
+        console.log(`[${appType}] AI原始返回:`, contentStr); // 方便调试
 
-        // --- 核心修复：兼容 [] (数组) 和 {} (对象) ---
+        // --- 核心修复：精准区分数组和对象 ---
         let jsonStr = null;
-        
-        // 1. 先尝试找数组 [...] (用于歌单、消息、相册等)
-        const arrayMatch = contentStr.match(/\[[\s\S]*\]/);
-        // 2. 再尝试找对象 {...} (用于心动讯号、小号等)
-        const objectMatch = contentStr.match(/\{[\s\S]*\}/);
 
-        // 3. 根据应用类型决定优先用哪个，或者谁匹配到了用谁
-        // 这是一个简单的判断逻辑：如果同时存在，通常取更长的那个，或者根据预期类型判断
-        if (['music', 'messages', 'memos', 'cart', 'transfer', 'browser', 'album'].includes(appType)) {
-            // 这些应用预期返回数组
+        // 1. 先去除 Markdown 代码块标记 (```json ... ```)
+        contentStr = contentStr.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        // 2. 根据应用类型，决定是找 [] 还是 {}
+        if (appType === 'music') {
+            // 特例：只有音乐是纯数组，找被 [] 包裹的内容
+            const arrayMatch = contentStr.match(/\[[\s\S]*\]/);
             if (arrayMatch) jsonStr = arrayMatch[0];
-            else if (objectMatch) jsonStr = objectMatch[0]; // 容错：万一AI包了一层对象
         } else {
-            // 其他应用（如 signal, unlock）预期返回对象
+            // 通用：备忘录、消息、心动讯号、Unlock等，全都是对象，找被 {} 包裹的内容
+            // 注意：备忘录虽然里面有数组，但最外层是 { "memos": [] }
+            const objectMatch = contentStr.match(/\{[\s\S]*\}/);
             if (objectMatch) jsonStr = objectMatch[0];
-            else if (arrayMatch) jsonStr = arrayMatch[0];
+        }
+
+        // 3. 容错兜底：如果没找到正则匹配，但字符串本身看起来是对的，就直接用
+        if (!jsonStr) {
+             if (contentStr.startsWith('[') && contentStr.endsWith(']')) jsonStr = contentStr;
+             else if (contentStr.startsWith('{') && contentStr.endsWith('}')) jsonStr = contentStr;
         }
 
         if (!jsonStr) {
-             // 最后的挣扎：尝试去除去 Markdown 符号再试一次
-             const cleanText = contentStr.replace(/```json/g, '').replace(/```/g, '').trim();
-             if (cleanText.startsWith('[') && cleanText.endsWith(']')) jsonStr = cleanText;
-             else if (cleanText.startsWith('{') && cleanText.endsWith('}')) jsonStr = cleanText;
+            throw new Error(`无法从AI返回中提取有效的JSON格式 (${appType === 'music' ? '数组' : '对象'})`);
         }
-
-        if (!jsonStr) throw new Error("AI响应中未找到有效的JSON结构 ([] 或 {})。");
         
         const generatedData = JSON.parse(jsonStr);
         // --- 修复结束 ---
