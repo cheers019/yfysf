@@ -88,7 +88,15 @@ const showToast = (message) => {
 
 async function callAiApi(messages, customApiSettings = null) {
     // 获取设置，支持传入自定义设置（用于商城等独立API场景）
-    const settings = customApiSettings || db.apiSettings;
+    // 关键修改：如果没有传入 customApiSettings，默认使用 functionalApiSettings
+    let settings = customApiSettings;
+    if (!settings) {
+        // 优先使用 functionalApiSettings，如果为空或未配置，则回退使用 apiSettings
+        settings = (db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                    db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model) 
+                    ? db.functionalApiSettings 
+                    : db.apiSettings;
+    }
     const { provider, url, key, model } = settings;
 
     if (!url || !key || !model) {
@@ -156,6 +164,7 @@ async function callAiApi(messages, customApiSettings = null) {
         requestBody = {
             contents: contents,
             generationConfig: {
+                maxOutputTokens: 8192
                 // 可以根据需要调整温度等参数
             }
         };
@@ -179,7 +188,8 @@ async function callAiApi(messages, customApiSettings = null) {
         requestBody = {
             model,
             messages,
-            stream: false // 这里的调用通常不需要流式
+            stream: false, // 这里的调用通常不需要流式
+            max_tokens: 8192
         };
     }
 
@@ -227,36 +237,109 @@ async function callAiApi(messages, customApiSettings = null) {
 
 // START: 修正动态生成屏幕的返回按钮 (完整替换)
 // ▼▼▼ 第一步：请复制这段代码，完整替换原来的 api-settings-screen.innerHTML 赋值部分 ▼▼▼
-document.getElementById('api-settings-screen').innerHTML = `<header class="app-header"><button class="back-btn" data-target="home-container">‹</button><div class="title-container"><h1 class="title">API 设置</h1></div><div class="placeholder"></div></header><main class="content"><form id="api-form"><div class="form-group"><label for="api-provider">API 服务商</label><select id="api-provider" name="provider"><option value="newapi">NewAPI (自定义)</option><option value="deepseek">DeepSeek</option><option value="claude">Claude</option><option value="gemini">Gemini</option></select>
-<div class="api-presets-embedded" style="margin-top:12px;">
-<div id="api-presets-control" style="margin:12px 0;padding:12px;border-radius:8px;border:1px solid var(--border-color, #eee);background:var(--panel-bg, #fff);box-shadow:var(--panel-shadow, none);">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-    <label style="min-width:86px;color:var(--muted,#666);">API 预设：</label>
-    <select id="api-preset-select" style="flex:1;padding:8px;border-radius:6px;border:1px solid #ddd;">
-      <option value="">— 选择 API 预设 —</option>
-    </select>
-    <button id="api-apply-preset" class="btn btn-primary" style="margin-left:8px;padding:6px 10px;">应用</button>
-  </div>
-  <div style="display:flex;gap:8px;align-items:center;">
-    <button id="api-save-preset" class="btn" style="padding:6px 10px;">另存为预设</button>
-    <button id="api-manage-presets" class="btn" style="padding:6px 10px;">管理</button>
-    <div style="flex:1"></div>
-    <button id="api-import-presets" class="btn" style="padding:6px 10px;">导入</button>
-    <button id="api-export-presets" class="btn" style="padding:6px 10px;">导出</button>
-  </div>
-</div>
-
-<div id="api-presets-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
-  <div style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
-    <h3 style="margin:0 0 12px 0;">API 预设管理</h3>
-    <div id="api-presets-list" style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;"></div>
-    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
-      <button id="api-close-modal" class="btn btn-primary">关闭</button>
+document.getElementById('api-settings-screen').innerHTML = `<header class="app-header"><button class="back-btn" data-target="home-container">‹</button><div class="title-container"><h1 class="title">API 设置</h1></div><div class="placeholder"></div></header><main class="content"><form id="api-form">
+<!-- 💬 聊天主模型区域 -->
+<fieldset style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 25px; background-color: #fafafa;">
+    <legend style="font-size: 16px; font-weight: 600; color: #333; padding: 0 10px;">💬 聊天主模型</legend>
+    
+    <div class="form-group">
+        <label for="api-provider">API 服务商</label>
+        <select id="api-provider" name="provider">
+            <option value="newapi">NewAPI (自定义)</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="claude">Claude</option>
+            <option value="gemini">Gemini</option>
+        </select>
     </div>
-  </div>
-</div>
-</div>
-</div><div class="form-group"><label for="api-url">API 地址（后缀不用添加/v1）</label><input type="url" id="api-url" name="url" placeholder="选择服务商可自动填写" required></div><div class="form-group"><label for="api-key">密钥 (Key)</label><input type="password" id="api-key" name="key" placeholder="请输入你的API密钥" required></div><button type="button" class="btn btn-secondary" id="fetch-models-btn"><span class="btn-text">点击拉取模型</span><div class="spinner"></div></button><div class="form-group"><label for="api-model">选择模型</label><select id="api-model" name="model" required><option value="">请先拉取模型列表</option></select></div>
+    
+    <div class="api-presets-embedded" style="margin-top:12px;">
+        <div id="api-presets-control" style="margin:12px 0;padding:12px;border-radius:8px;border:1px solid var(--border-color, #eee);background:var(--panel-bg, #fff);box-shadow:var(--panel-shadow, none);">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <label style="min-width:86px;color:var(--muted,#666);">API 预设：</label>
+            <select id="api-preset-select" style="flex:1;padding:8px;border-radius:6px;border:1px solid #ddd;">
+              <option value="">— 选择 API 预设 —</option>
+            </select>
+            <button id="api-apply-preset" class="btn btn-primary" style="margin-left:8px;padding:6px 10px;">应用</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="api-save-preset" class="btn" style="padding:6px 10px;">另存为预设</button>
+            <button id="api-manage-presets" class="btn" style="padding:6px 10px;">管理</button>
+            <div style="flex:1"></div>
+            <button id="api-import-presets" class="btn" style="padding:6px 10px;">导入</button>
+            <button id="api-export-presets" class="btn" style="padding:6px 10px;">导出</button>
+          </div>
+        </div>
+
+        <div id="api-presets-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+          <div style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+            <h3 style="margin:0 0 12px 0;">API 预设管理</h3>
+            <div id="api-presets-list" style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;"></div>
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+              <button id="api-close-modal" class="btn btn-primary">关闭</button>
+            </div>
+          </div>
+        </div>
+    </div>
+    
+    <div class="form-group">
+        <label for="api-url">API 地址</label>
+        <input type="url" id="api-url" name="url" placeholder="选择服务商可自动填写（后缀不用添加/v1）" required>
+    </div>
+    
+    <div class="form-group">
+        <label for="api-key">密钥 (Key)</label>
+        <input type="password" id="api-key" name="key" placeholder="请输入你的API密钥" required>
+    </div>
+    
+    <button type="button" class="btn btn-secondary" id="fetch-models-btn-main">
+        <span class="btn-text">点击拉取模型</span>
+        <div class="spinner"></div>
+    </button>
+    
+    <div class="form-group">
+        <label for="api-model">选择模型</label>
+        <select id="api-model" name="model" required>
+            <option value="">请先拉取模型列表</option>
+        </select>
+    </div>
+</fieldset>
+
+<!-- ⚙️ 全局功能模型区域 -->
+<fieldset style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 25px; background-color: #fafafa;">
+    <legend style="font-size: 16px; font-weight: 600; color: #333; padding: 0 10px;">⚙️ 全局功能模型 (日记/心声/羁绊)</legend>
+    
+    <div class="form-group">
+        <label for="func-api-provider">API 服务商</label>
+        <select id="func-api-provider" name="func-provider">
+            <option value="newapi">NewAPI (自定义)</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="claude">Claude</option>
+            <option value="gemini">Gemini</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label for="func-api-url">API 地址</label>
+        <input type="url" id="func-api-url" name="func-url" placeholder="选择服务商可自动填写（后缀不用添加/v1）" required>
+    </div>
+    
+    <div class="form-group">
+        <label for="func-api-key">密钥 (Key)</label>
+        <input type="password" id="func-api-key" name="func-key" placeholder="请输入你的API密钥" required>
+    </div>
+    
+    <button type="button" class="btn btn-secondary" id="fetch-models-btn-func">
+        <span class="btn-text">点击拉取模型</span>
+        <div class="spinner"></div>
+    </button>
+    
+    <div class="form-group">
+        <label for="func-api-model">选择模型</label>
+        <select id="func-api-model" name="func-model" required>
+            <option value="">请先拉取模型列表</option>
+        </select>
+    </div>
+</fieldset>
 
 <!-- === Minimax TTS 语音设置 === -->
 <div class="form-group" style="margin-top: 30px; border-top: 2px solid #fce4ec; padding-top: 20px;">
@@ -591,6 +674,7 @@ const defaultIcons = {
             characters: [],
             groups: [],
             apiSettings: {},
+            functionalApiSettings: {}, // 新增：全局功能模型配置
             wallpaper: 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg',
             wallpaper2: 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg', // 新增：第二页壁纸
             myStickers: [],
@@ -627,7 +711,6 @@ let isNotificationShowing = false;
             isInMultiSelectMode = false, editingMessageId = null, currentPage = 1, currentTransferMessageId = null,
             currentEditingWorldBookId = null, currentStickerActionTarget = null,
             currentGroupAction = {type: null, recipients: []};
-            let isFavoriteProcessing = false; // 用于防止收藏按钮被双击
             let currentStickerCategory = 'all'; // 🆕 当前选中的表情包分组（'all' = 全部）
             let isStickerSelectionMode = false; // 🆕 是否处于多选模式
             let selectedStickerIds = new Set(); // 🆕 选中的表情包 ID 集合
@@ -1381,6 +1464,7 @@ const locationBtn = document.getElementById('location-btn'),
                 groups, 
                 worldBooks, 
                 apiSettings,
+                functionalApiSettings, // 新增：全局功能模型配置
                 customIcons,
                 wallpaper,
                 wallpaper2,
@@ -1396,6 +1480,7 @@ const locationBtn = document.getElementById('location-btn'),
             // 新增：为每一项重要数据创建独立的保存通道
             if (worldBooks) await dataStorage.saveData('worldBooks_data', worldBooks);
             if (apiSettings) await dataStorage.saveData('apiSettings_data', apiSettings);
+            if (functionalApiSettings) await dataStorage.saveData('functionalApiSettings_data', functionalApiSettings); // 新增：保存全局功能模型配置
             if (customIcons) await dataStorage.saveData('customIcons_data', customIcons);
             if (wallpaper) await dataStorage.saveData('wallpaper_data', wallpaper);
             if (wallpaper2) await dataStorage.saveData('wallpaper2_data', wallpaper2);
@@ -1504,6 +1589,12 @@ const locationBtn = document.getElementById('location-btn'),
             // --- 兼容代码结束 ---
             // ▲▲▲ 添加结束 ▲▲▲
             db.apiSettings = await dataStorage.getData('apiSettings_data') || {};
+            // 新增：加载全局功能模型配置
+            db.functionalApiSettings = await dataStorage.getData('functionalApiSettings_data') || null;
+            // 如果没有存过，则默认让它等于 apiSettings（深拷贝，避免空值报错）
+            if (!db.functionalApiSettings || Object.keys(db.functionalApiSettings).length === 0) {
+                db.functionalApiSettings = JSON.parse(JSON.stringify(db.apiSettings || {}));
+            }
             db.customIcons = await dataStorage.getData('customIcons_data') || {};
             db.wallpaper = await dataStorage.getData('wallpaper_data') || 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg';
             db.wallpaper2 = await dataStorage.getData('wallpaper2_data') || 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg';
@@ -1529,6 +1620,10 @@ db.groups.forEach(g => {
     db.uncategorizedCollapsed = false; // 默认不折叠
 }// 初始化默认值
             if (!db.apiSettings) db.apiSettings = {};
+            // 新增：确保 functionalApiSettings 有默认值
+            if (!db.functionalApiSettings || Object.keys(db.functionalApiSettings).length === 0) {
+                db.functionalApiSettings = JSON.parse(JSON.stringify(db.apiSettings || {}));
+            }
 if (!db.wallet) {
     db.wallet = {
         balance: 0.00,
@@ -2343,8 +2438,13 @@ function setupPomodoroFeature() {
         aiStatusEl.textContent = `${character.remarkName} 正在输入...`;
         
         try {
-            const prompt = `[system: 我在专注期间有点分心，点击了你的头像。请根据你的人设“${character.persona}”，说一句简短、温柔或俏皮的话来鼓励我继续坚持下去。直接输出鼓励的话，不要有其他前缀。]`;
-            const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+            const prompt = `[system: 我在专注期间有点分心，点击了你的头像。请根据你的人设"${character.persona}"，说一句简短、温柔或俏皮的话来鼓励我继续坚持下去。直接输出鼓励的话，不要有其他前缀。]`;
+            // 修改：使用全局功能模型 API 设置（番茄钟陪伴功能）
+            const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                       db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                       ? db.functionalApiSettings 
+                                       : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+            const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
             aiCompanionTextEl.textContent = aiResponseText;
             aiStatusEl.textContent = `${character.remarkName} 陪伴中...`;
         } catch(e) {
@@ -10237,7 +10337,9 @@ async function getAiReply() {
             requestBody = {
                 contents: contents,
                 system_instruction: { parts: [{ text: systemPrompt }] },
-                generationConfig: {}
+                generationConfig: {
+                    maxOutputTokens: 8192
+                }
             };
             endpoint = `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}`;
             headers = { 'Content-Type': 'application/json' };
@@ -10269,7 +10371,8 @@ async function getAiReply() {
             requestBody = {
                 model: model,
                 messages: messages,
-                stream: true
+                stream: true,
+                max_tokens: 8192
             };
             endpoint = `${url}/v1/chat/completions`;
             headers = {
@@ -12992,113 +13095,228 @@ async function saveSettingsFromSidebar() {
 
 // ▼▼▼ 第二步：请复制这段代码，完整替换 setupApiSettingsApp 函数 ▼▼▼
 function setupApiSettingsApp() {
-    const e = document.getElementById('api-form'), t = document.getElementById('fetch-models-btn'),
-        a = document.getElementById('api-model'), n = document.getElementById('api-provider'),
-        r = document.getElementById('api-url'), s = document.getElementById('api-key'), 
-        theaterCheckbox = document.getElementById('force-html-theater'),
-        autoPostMomentCheckbox = document.getElementById('ai-auto-post-moment'),
-        // 新增：获取时间感知开关
-        timePerceptionCheckbox = document.getElementById('time-perception-switch'), 
-        c = {
-            newapi: '',
-            deepseek: 'https://api.deepseek.com',
-            claude: 'https://api.anthropic.com',
-            gemini: 'https://generativelanguage.googleapis.com'
-        };
+    const form = document.getElementById('api-form');
+    
+    // 主聊天模型区域元素
+    const mainProvider = document.getElementById('api-provider');
+    const mainUrl = document.getElementById('api-url');
+    const mainKey = document.getElementById('api-key');
+    const mainModel = document.getElementById('api-model');
+    const mainFetchBtn = document.getElementById('fetch-models-btn-main');
+    
+    // 全局功能模型区域元素
+    const funcProvider = document.getElementById('func-api-provider');
+    const funcUrl = document.getElementById('func-api-url');
+    const funcKey = document.getElementById('func-api-key');
+    const funcModel = document.getElementById('func-api-model');
+    const funcFetchBtn = document.getElementById('fetch-models-btn-func');
+    
+    // 其他设置元素
+    const theaterCheckbox = document.getElementById('force-html-theater');
+    const autoPostMomentCheckbox = document.getElementById('ai-auto-post-moment');
+    const timePerceptionCheckbox = document.getElementById('time-perception-switch');
+    
+    // Provider 默认 URL 映射
+    const providerUrls = {
+        newapi: '',
+        deepseek: 'https://api.deepseek.com',
+        claude: 'https://api.anthropic.com',
+        gemini: 'https://generativelanguage.googleapis.com'
+    };
 
-    if (db.apiSettings) { // 加载已有设置
-        n.value = db.apiSettings.provider || 'newapi';
-        r.value = db.apiSettings.url || '';
-        s.value = db.apiSettings.key || '';
+    // ===== 1. 数据回显 =====
+    // 填充主聊天模型设置
+    if (db.apiSettings) {
+        mainProvider.value = db.apiSettings.provider || 'newapi';
+        mainUrl.value = db.apiSettings.url || '';
+        mainKey.value = db.apiSettings.key || '';
         if (db.apiSettings.model) {
-            a.innerHTML = `<option value="${db.apiSettings.model}">${db.apiSettings.model}</option>`;
+            mainModel.innerHTML = `<option value="${db.apiSettings.model}">${db.apiSettings.model}</option>`;
         }
-        theaterCheckbox.checked = !!db.apiSettings.forceHtmlTheater;
-        autoPostMomentCheckbox.checked = !!db.apiSettings.aiAutoPostMoment;
-        document.getElementById('ai-block-duration').value = db.apiSettings.aiBlockDuration || '';
-        
-        // 新增：加载时间感知开关状态
-        timePerceptionCheckbox.checked = !!db.apiSettings.timePerceptionEnabled;
+    }
+    
+    // 填充全局功能模型设置
+    if (db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0) {
+        funcProvider.value = db.functionalApiSettings.provider || 'newapi';
+        funcUrl.value = db.functionalApiSettings.url || '';
+        funcKey.value = db.functionalApiSettings.key || '';
+        if (db.functionalApiSettings.model) {
+            funcModel.innerHTML = `<option value="${db.functionalApiSettings.model}">${db.functionalApiSettings.model}</option>`;
+        }
+    } else {
+        // 如果为空，使用默认空值填充
+        funcProvider.value = 'newapi';
+        funcUrl.value = '';
+        funcKey.value = '';
+        funcModel.innerHTML = '<option value="">请先拉取模型列表</option>';
+    }
+    
+    // 加载其他设置
+    if (theaterCheckbox) theaterCheckbox.checked = !!db.apiSettings?.forceHtmlTheater;
+    if (autoPostMomentCheckbox) autoPostMomentCheckbox.checked = !!db.apiSettings?.aiAutoPostMoment;
+    if (timePerceptionCheckbox) timePerceptionCheckbox.checked = !!db.apiSettings?.timePerceptionEnabled;
+    
+    const aiBlockDurationEl = document.getElementById('ai-block-duration');
+    if (aiBlockDurationEl) aiBlockDurationEl.value = db.apiSettings?.aiBlockDuration || '';
     
     // ===== 加载 Minimax TTS 配置 =====
     if (document.getElementById('minimax-group-id')) {
-        document.getElementById('minimax-group-id').value = db.apiSettings.minimaxGroupId || '';
-        document.getElementById('minimax-api-key').value = db.apiSettings.minimaxApiKey || '';
-        document.getElementById('minimax-model-select').value = db.apiSettings.minimaxModel || 'speech-01';
-        document.getElementById('minimax-domain-select').value = db.apiSettings.minimaxDomain || 'https://api.minimax.chat';
+        document.getElementById('minimax-group-id').value = db.apiSettings?.minimaxGroupId || '';
+        document.getElementById('minimax-api-key').value = db.apiSettings?.minimaxApiKey || '';
+        document.getElementById('minimax-model-select').value = db.apiSettings?.minimaxModel || 'speech-01';
+        document.getElementById('minimax-domain-select').value = db.apiSettings?.minimaxDomain || 'https://api.minimax.chat';
         
         // 同时初始化全局变量 ttsConfig
-        ttsConfig.minimaxGroupId = db.apiSettings.minimaxGroupId || '';
-        ttsConfig.minimaxApiKey = db.apiSettings.minimaxApiKey || '';
-        ttsConfig.minimaxModel = db.apiSettings.minimaxModel || 'speech-01';
-        ttsConfig.minimaxDomain = db.apiSettings.minimaxDomain || 'https://api.minimax.chat';
+        ttsConfig.minimaxGroupId = db.apiSettings?.minimaxGroupId || '';
+        ttsConfig.minimaxApiKey = db.apiSettings?.minimaxApiKey || '';
+        ttsConfig.minimaxModel = db.apiSettings?.minimaxModel || 'speech-01';
+        ttsConfig.minimaxDomain = db.apiSettings?.minimaxDomain || 'https://api.minimax.chat';
     }
-}
 
-    n.addEventListener('change', () => {
-        r.value = c[n.value] || ''
+    // ===== 2. Provider 变化时自动填充 URL =====
+    mainProvider.addEventListener('change', () => {
+        mainUrl.value = providerUrls[mainProvider.value] || '';
     });
     
-    t.addEventListener('click', async () => {
-        let o = r.value.trim();
-        const l = s.value.trim();
-        if (!o || !l) return showToast('请先填写API地址和密钥！');
-        o.endsWith('/') && (o = o.slice(0, -1));
-        const i = 'gemini' === n.value ? `${o}/v1beta/models?key=${getRandomValue(l)}` : `${o}/v1/models`;
-        t.classList.add('loading'), t.disabled = !0;
+    funcProvider.addEventListener('change', () => {
+        funcUrl.value = providerUrls[funcProvider.value] || '';
+    });
+    
+    // ===== 3. 拉取模型功能 =====
+    // 通用拉取模型函数
+    const fetchModels = async (url, key, provider, modelSelect, fetchBtn) => {
+        let apiUrl = url.trim();
+        const apiKey = key.trim();
+        if (!apiUrl || !apiKey) {
+            showToast('请先填写API地址和密钥！');
+            return;
+        }
+        if (apiUrl.endsWith('/')) {
+            apiUrl = apiUrl.slice(0, -1);
+        }
+        
+        const endpoint = provider === 'gemini' 
+            ? `${apiUrl}/v1beta/models?key=${getRandomValue(apiKey)}` 
+            : `${apiUrl}/v1/models`;
+        
+        fetchBtn.classList.add('loading');
+        fetchBtn.disabled = true;
+        
         try {
-            const d = 'gemini' === n.value ? {} : {Authorization: `Bearer ${l}`},
-                g = await fetch(i, {method: 'GET', headers: d});
-            if (!g.ok) throw new Error(`网络响应错误: ${g.status}`);
-            const u = await g.json();
-            let p = [];
-            'gemini' !== n.value && u.data ? p = u.data.map(e => e.id) : 'gemini' === n.value && u.models && (p = u.models.map(e => e.name.replace('models/', ''))), a.innerHTML = '', p.length > 0 ? p.forEach(e => {
-                const t = document.createElement('option');
-                t.value = e, t.textContent = e, a.appendChild(t)
-            }) : a.innerHTML = '<option value="">未找到任何模型</option>', showToast('模型列表拉取成功！')
-        } catch (f) {
-            showToast(`拉取失败: ${f.message}`), a.innerHTML = '<option value="">拉取失败</option>'
+            const headers = provider === 'gemini' 
+                ? {} 
+                : { Authorization: `Bearer ${apiKey}` };
+            
+            const response = await fetch(endpoint, { method: 'GET', headers });
+            if (!response.ok) {
+                throw new Error(`网络响应错误: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            let models = [];
+            
+            if (provider === 'gemini') {
+                if (data.models) {
+                    models = data.models.map(m => m.name.replace('models/', ''));
+                }
+            } else {
+                if (data.data) {
+                    models = data.data.map(m => m.id);
+                }
+            }
+            
+            modelSelect.innerHTML = '';
+            if (models.length > 0) {
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelSelect.appendChild(option);
+                });
+                showToast('模型列表拉取成功！');
+            } else {
+                modelSelect.innerHTML = '<option value="">未找到任何模型</option>';
+                showToast('未找到任何模型');
+            }
+        } catch (error) {
+            showToast(`拉取失败: ${error.message}`);
+            modelSelect.innerHTML = '<option value="">拉取失败</option>';
         } finally {
-            t.classList.remove('loading'), t.disabled = !1
+            fetchBtn.classList.remove('loading');
+            fetchBtn.disabled = false;
         }
+    };
+    
+    // 主聊天模型拉取按钮
+    mainFetchBtn.addEventListener('click', async () => {
+        await fetchModels(mainUrl.value, mainKey.value, mainProvider.value, mainModel, mainFetchBtn);
     });
     
-    e.addEventListener('submit', async (e) => {
+    // 全局功能模型拉取按钮
+    funcFetchBtn.addEventListener('click', async () => {
+        await fetchModels(funcUrl.value, funcKey.value, funcProvider.value, funcModel, funcFetchBtn);
+    });
+    
+    // ===== 4. 保存逻辑 =====
+    form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (!a.value) return showToast('请选择模型后保存！');
-        const banApi = URLBlacklist.some((api)=>{
-            return r.value.indexOf(api) !== -1
-        })
-        if(banApi){
-            alert('此API网址已加入黑名单，请勿使用')
-            return
+        
+        // 验证主聊天模型
+        if (!mainModel.value) {
+            showToast('请选择主聊天模型后保存！');
+            return;
         }
-        // 保存所有设置，包括新的开关状态
+        
+        // 验证全局功能模型
+        if (!funcModel.value) {
+            showToast('请选择全局功能模型后保存！');
+            return;
+        }
+        
+        // 检查黑名单
+        const banApi = URLBlacklist.some((api) => {
+            return mainUrl.value.indexOf(api) !== -1 || funcUrl.value.indexOf(api) !== -1;
+        });
+        if (banApi) {
+            alert('此API网址已加入黑名单，请勿使用');
+            return;
+        }
+        
+        // 保存主聊天模型设置
         db.apiSettings = {
-            provider: n.value, 
-            url: r.value, 
-            key: s.value, 
-            model: a.value,
-            forceHtmlTheater: theaterCheckbox.checked,
-            aiAutoPostMoment: autoPostMomentCheckbox.checked,
-            aiBlockDuration: document.getElementById('ai-block-duration').value || 0,
-            // 新增：保存时间感知开关状态
-    timePerceptionEnabled: timePerceptionCheckbox.checked,
-    // ===== Minimax TTS 配置 =====
-    minimaxGroupId: document.getElementById('minimax-group-id').value.trim(),
-    minimaxApiKey: document.getElementById('minimax-api-key').value.trim(),
-    minimaxModel: document.getElementById('minimax-model-select').value,
-    minimaxDomain: document.getElementById('minimax-domain-select').value
+            provider: mainProvider.value,
+            url: mainUrl.value,
+            key: mainKey.value,
+            model: mainModel.value,
+            forceHtmlTheater: theaterCheckbox?.checked || false,
+            aiAutoPostMoment: autoPostMomentCheckbox?.checked || false,
+            aiBlockDuration: aiBlockDurationEl?.value || 0,
+            timePerceptionEnabled: timePerceptionCheckbox?.checked || false,
+            minimaxGroupId: document.getElementById('minimax-group-id')?.value.trim() || '',
+            minimaxApiKey: document.getElementById('minimax-api-key')?.value.trim() || '',
+            minimaxModel: document.getElementById('minimax-model-select')?.value || 'speech-01',
+            minimaxDomain: document.getElementById('minimax-domain-select')?.value || 'https://api.minimax.chat'
         };
+        
+        // 保存全局功能模型设置
+        db.functionalApiSettings = {
+            provider: funcProvider.value,
+            url: funcUrl.value,
+            key: funcKey.value,
+            model: funcModel.value
+        };
+        
         // 同时更新全局变量 ttsConfig
-        ttsConfig.minimaxGroupId = db.apiSettings.minimaxGroupId;
-        ttsConfig.minimaxApiKey = db.apiSettings.minimaxApiKey;
-        ttsConfig.minimaxModel = db.apiSettings.minimaxModel;
-        ttsConfig.minimaxDomain = db.apiSettings.minimaxDomain;
+        if (document.getElementById('minimax-group-id')) {
+            ttsConfig.minimaxGroupId = db.apiSettings.minimaxGroupId;
+            ttsConfig.minimaxApiKey = db.apiSettings.minimaxApiKey;
+            ttsConfig.minimaxModel = db.apiSettings.minimaxModel;
+            ttsConfig.minimaxDomain = db.apiSettings.minimaxDomain;
+        }
         
         await saveData();
-        showToast('API设置已保存！')
-    })
+        showToast('API设置已保存！');
+    });
 }
 // ▲▲▲ 替换结束 ▲▲▲
 
@@ -13328,8 +13546,12 @@ ${historyScript}
         let messagesForApi = [{ role: 'user', content: prompt }];
         
         // ==========================================
-
-        const aiResponseText = await callAiApi(messagesForApi);
+        // 修改：使用全局功能模型 API 设置（日记功能）
+        const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                   db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                   ? db.functionalApiSettings 
+                                   : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+        const aiResponseText = await callAiApi(messagesForApi, functionalSettings);
         
         console.log("AI日记返回:", aiResponseText); 
 
@@ -13378,21 +13600,11 @@ async function saveDiaryEntry_FINAL_FIX(content, characterId) {
     const newDiary = {
         id: `diary_${Date.now()}`,
         timestamp: Date.now(),
-        content: content.trim(),
-        isFavorited: false
+        content: content.trim()
     };
 
-    character.diaries.push(newDiary);
-    
-    const favoritedDiaries = character.diaries.filter(d => d.isFavorited);
-    let unfavoritedDiaries = character.diaries.filter(d => !d.isFavorited);
-
-    if (unfavoritedDiaries.length === 6) {
-        unfavoritedDiaries.sort((a, b) => a.timestamp - b.timestamp);
-        unfavoritedDiaries = unfavoritedDiaries.slice(-1);
-    }
-
-    character.diaries = [...favoritedDiaries, ...unfavoritedDiaries];
+    // 简化逻辑：直接添加到数组开头，永久保留
+    character.diaries.unshift(newDiary);
     
     character.messageCountSinceLastDiary = 0;
     
@@ -13418,31 +13630,11 @@ async function saveDiaryEntry(content, characterId) {
     const newDiary = {
         id: `diary_${Date.now()}`,
         timestamp: Date.now(),
-        content: content.trim(),
-        isFavorited: false
+        content: content.trim()
     };
 
-    character.diaries.push(newDiary);
-    
-    // --- 新版逻辑：当未收藏日记达到第6篇时，清空前5篇 ---
-    
-    // 1. 将日记分为“已收藏”和“未收藏”两组
-    const favoritedDiaries = character.diaries.filter(d => d.isFavorited);
-    let unfavoritedDiaries = character.diaries.filter(d => !d.isFavorited);
-
-    // 2. 检查“未收藏”的日记数量是否正好达到了6篇
-    if (unfavoritedDiaries.length === 6) {
-        // 3. 如果是，则按时间排序以确保新生成的日记在最后
-        unfavoritedDiaries.sort((a, b) => a.timestamp - b.timestamp);
-        
-        // 4. 只保留数组中的最后一个元素（即刚刚新生成的第6篇），从而删除前5篇
-        unfavoritedDiaries = unfavoritedDiaries.slice(-1);
-    }
-
-    // 5. 将“已收藏”和“处理后保留的未收藏”合并，形成最终的日记列表
-    character.diaries = [...favoritedDiaries, ...unfavoritedDiaries];
-
-    // --- 新版逻辑结束 ---
+    // 简化逻辑：直接添加到数组开头，永久保留
+    character.diaries.unshift(newDiary);
     
     // 重置消息计数
     character.messageCountSinceLastDiary = 0;
@@ -13479,9 +13671,6 @@ function renderDiaries() {
             <div class="diary-header">
                 <span class="diary-date">${dateString}</span>
                 <div class="diary-actions">
-                    <button class="favorite-diary-btn ${diary.isFavorited ? 'favorited' : ''}" title="收藏">
-                        <svg viewBox="0 0 24 24"><path d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z" /></svg>
-                    </button>
                     <button class="delete-diary-btn" title="删除">
                         <svg viewBox="0 0 24 24"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" /></svg>
                     </button>
@@ -13515,11 +13704,9 @@ function setupDiarySystem() {
     const openAiDiaryBtn = document.getElementById('open-ai-diary-btn');
     const openUserDiaryBtn = document.getElementById('open-user-diary-btn');
     const openWriteDiaryBtn = document.getElementById('open-write-user-diary-btn');
-    const openFavoritesBtn = document.getElementById('open-favorites-diary-btn');
     
     const aiDiaryScreen = document.getElementById('diary-screen');
     const userDiaryScreen = document.getElementById('user-diary-screen');
-    const favoritesDiaryScreen = document.getElementById('favorites-diary-screen');
     const writeUserDiaryModal = document.getElementById('write-user-diary-modal');
     const aiPeekModal = document.getElementById('ai-peek-selection-modal');
 
@@ -13583,30 +13770,14 @@ function setupDiarySystem() {
         });
     }
 
-    // 渲染收藏的日记
+    // 渲染收藏的日记（已废弃：收藏功能已移除）
     function renderFavoriteDiaries() {
-        const character = db.characters.find(c => c.id === currentChatId);
         const container = document.getElementById('favorites-diary-list-container');
         const placeholder = document.getElementById('no-favorites-placeholder');
-
-        const allDiaries = [
-            ...(character.diaries || []).map(d => ({...d, isUser: false})),
-            ...(db.userDiaries || []).map(d => ({...d, isUser: true}))
-        ];
-        const favorited = allDiaries.filter(d => d.isFavorited);
-
-        if (favorited.length === 0) {
-            container.innerHTML = '';
-            placeholder.style.display = 'block';
-            return;
-        }
-
-        placeholder.style.display = 'none';
+        
+        // 收藏功能已移除，始终显示空状态
         container.innerHTML = '';
-        favorited.sort((a, b) => b.timestamp - a.timestamp);
-        favorited.forEach(diary => {
-            container.appendChild(createDiaryEntryElement(diary, diary.isUser));
-        });
+        placeholder.style.display = 'block';
     }
 
     // 创建单个日记条目的HTML元素（使用<details>实现折叠）
@@ -13619,7 +13790,7 @@ function setupDiarySystem() {
         const date = new Date(diary.timestamp);
         const dateString = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
         
-        let actionsHTML = `<button class="favorite-diary-btn ${diary.isFavorited ? 'favorited' : ''}" title="收藏"><svg viewBox="0 0 24 24"><path d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z" /></svg></button>`;
+        let actionsHTML = '';
         if (isUser) {
             actionsHTML += `<button class="edit-user-diary-btn" title="编辑"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z" /></svg></button>`;
         }
@@ -13667,7 +13838,6 @@ function setupDiarySystem() {
                 id: `user_diary_${Date.now()}`,
                 timestamp: Date.now(),
                 content: content,
-                isFavorited: false,
                 aiComments: []
             };
             db.userDiaries.push(newDiary);
@@ -13709,7 +13879,12 @@ function setupDiarySystem() {
         4.  你的输出必须**直接是评论内容**，不要包含任何“好的，这是我的评论：”之类的话。`;
 
         try {
-            const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+            // 修改：使用全局功能模型 API 设置（偷看日记功能）
+            const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                       db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                       ? db.functionalApiSettings 
+                                       : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+            const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
             
             userDiary.aiComments = userDiary.aiComments || [];
             userDiary.aiComments.push({ aiId: peekingAi.id, text: aiResponseText, timestamp: Date.now() });
@@ -13763,7 +13938,6 @@ function setupDiarySystem() {
         writeUserDiaryModal.classList.add('visible'); 
         diaryActionSheet.classList.remove('visible');
     });
-    openFavoritesBtn.addEventListener('click', () => { renderFavoriteDiaries(); switchScreen('favorites-diary-screen'); diaryActionSheet.classList.remove('visible'); });
 
     document.getElementById('generate-diary-manually-btn').addEventListener('click', () => generateDiaryEntry(currentChatId, true));
     document.getElementById('write-user-diary-form').addEventListener('submit', saveUserDiary);
@@ -13826,22 +14000,7 @@ function setupDiarySystem() {
         if (diaryList) diary = diaryList.find(d => d.id === diaryId);
         if (!diary) return;
 
-        if (e.target.closest('.favorite-diary-btn')) {
-            if (isFavoriteProcessing) return; // 如果正在处理中，则阻止后续操作
-        isFavoriteProcessing = true; // 上锁
-
-        const favBtn = e.target.closest('.favorite-diary-btn');
-        diary.isFavorited = !diary.isFavorited; // 切换状态
-        await saveData(); // 保存新状态
-
-        // 根据最终状态更新UI和提示
-        favBtn.classList.toggle('favorited', diary.isFavorited);
-        showToast(diary.isFavorited ? '已收藏' : '已取消收藏');
-
-        // 300毫秒后解锁，以便下次可以点击
-        setTimeout(() => { isFavoriteProcessing = false; }, 300);
-        // ▲▲▲ 替换结束 ▲▲▲
-    }
+        // 已移除收藏功能：不再处理收藏按钮点击事件
         if (e.target.closest('.delete-diary-btn')) {
             if (confirm('确定要删除这篇日记吗？')) {
                 const index = diaryList.findIndex(d => d.id === diaryId);
@@ -15933,7 +16092,12 @@ function setupDailyQuestionFeature() {
 
             try {
                 const prompt = generateDailyQuestionPrompt(character);
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+                // 修改：使用全局功能模型 API 设置（每日一问功能）
+                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                           ? db.functionalApiSettings 
+                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
                 
                 const newQuestion = {
                     date: today,
@@ -16089,7 +16253,12 @@ function setupMoodWeatherFeature() {
 
             try {
                 const prompt = generateMoodWeatherPrompt(character);
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+                // 修改：使用全局功能模型 API 设置（情绪天气功能）
+                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                           ? db.functionalApiSettings 
+                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
                 const moodData = JSON.parse(aiResponseText.match(/{[\s\S]*}/)[0]);
                 
                 character.soulBondData.moodCache = {
@@ -16481,17 +16650,16 @@ function setupSoulBondApp() {
                  // 这些功能已经有独立的 setup 函数处理，这里无需重复
                 break;
             default:
-                showToast('“' + (btn.title || '该') + '”功能正在开发中...');
+                showToast('"' + (btn.title || '该') + '"功能正在开发中...');
                 break;
         }
         // ▲▲▲ 修复结束 ▲▲▲
     });
     
-    // 确保在App启动时调用新功能
-    setupWishlistApp();
-    setupDiaryExchangeApp();
-    setupDailyQuestionFeature();
-    setupMoodWeatherFeature();
+    // ▼▼▼ 事件监听器重复绑定修复：移除重复的 setup 函数调用 ▼▼▼
+    // 注意：这些函数已经在全局初始化时调用（第3069、3072-3073行），
+    // setupWishlistApp() 已在第16456行调用，这里无需重复调用
+    // ▲▲▲ 修复结束 ▲▲▲
 }
 // ===============================================================
 // START: 心灵羁绊 - 绑定功能核心逻辑
@@ -16624,7 +16792,12 @@ function setupWishlistApp() {
 
         try {
             const prompt = generateAiWishlistPrompt(character);
-            const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+            // 修改：使用全局功能模型 API 设置（愿望清单功能）
+            const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                       db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                       ? db.functionalApiSettings 
+                                       : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+            const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
             const wishlistData = JSON.parse(aiResponseText.match(/\[[\s\S]*\]/)[0]);
             
             const wishes = wishlistData.map(wish => ({ id: `wish_${Date.now()}_${Math.random()}`, text: wish, completed: false }));
@@ -17141,7 +17314,7 @@ function generateTrajectoryPrompt(character) {
     const currentHour = String(now.getHours()).padStart(2, '0');
     const currentMinute = String(now.getMinutes()).padStart(2, '0');
     const currentTimeString = `${currentHour}:${currentMinute}`;
-    const memory = character.history.slice(-15);
+    const memory = character.history.slice(-50);
     let historyText = memory.map(msg => {
         const sender = msg.role === 'user' ? character.myName : character.remarkName;
         const contentMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
@@ -17168,7 +17341,7 @@ function generateTrajectoryPrompt(character) {
  * 【新增】为AI生成“心声”的指令
  */
 function generateHeartSoundPrompt(character) {
-    const memory = character.history.slice(-10); // 获取最近10条消息作为上下文
+    const memory = character.history.slice(-50); // 获取最近50条消息作为上下文
     let historyText = memory.map(msg => {
         const sender = msg.role === 'user' ? character.myName : character.remarkName;
         const contentMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
@@ -17178,15 +17351,15 @@ function generateHeartSoundPrompt(character) {
 
   
  let prompt = `你正在扮演角色“${character.realName}”，你的人设是：${character.persona}。
-现在，请根据我们最近的对话，用你的第一人称视角，写一段**不少于150字**的、关于你此刻对我的真实内心想法或感受。
+现在，请根据我们最近的对话，用你的第一人称视角，写一段**50字以上**的、符合人设的思考或心情记录。
 
 # 格式要求 (必须严格遵守):
-1.  你的内心独白**必须**被分成2到4个自然段落。
+1.  你的内心独白**必须**合理划分自然段落。
 2.  每个段落的开头需要有两个全角空格的缩进 \`　　\` 以实现美观的排版。
 3.  请直接输出带有分段和缩进的内心独白，不要包含任何额外的格式或解释，例如“好的，这是我的想法：”之类的话。
 
 # 内容要求:
-- 你的思考需要深刻体现你的性格和人设，可以包含对我们关系的看法、你的秘密情感、担忧或未来的计划等。
+- 你的心声需要深刻体现你的性格和人设，符合你当下最真实的心情，是最核心、最私密、最直接的内心独白。
 
 # 对话参考:
 最近的对话如下:
@@ -17244,7 +17417,12 @@ function setupTrajectoryAndHeartSoundSystem() {
 
             try {
                 const prompt = generateHeartSoundPrompt(character);
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+                // 修改：使用全局功能模型 API 设置（心声功能）
+                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                           ? db.functionalApiSettings 
+                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
                 contentEl.textContent = aiResponseText;
 
             } catch (error) {
@@ -17263,7 +17441,12 @@ function setupTrajectoryAndHeartSoundSystem() {
 
             try {
                 const prompt = generateTrajectoryPrompt(character);
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+                // 修改：使用全局功能模型 API 设置（轨迹功能）
+                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                           ? db.functionalApiSettings 
+                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
                 const jsonMatch = aiResponseText.match(/\[[\s\S]*\]/); 
                 if (!jsonMatch) throw new Error("AI的回复中没有找到有效的JSON数组。");
                 
@@ -18057,7 +18240,12 @@ function setupAiPovApp() {
                 const userProfile = { name: character.myName };
                 const prompt = generateAiChatListPrompt(character, otherCharacters, userProfile);
 
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+                // 修改：使用全局功能模型 API 设置（AI视角聊天列表功能）
+                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                           ? db.functionalApiSettings 
+                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
                 const chatList = extractAndParseJson(aiResponseText);
 
                 // 存储AI生成的数据到临时变量和长期缓存
@@ -18120,7 +18308,12 @@ function setupAiPovApp() {
 
             try {
                 const prompt = generateAiConversationPrompt(currentAiPovData.mainAi, chatInfo);
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }]);
+                // 修改：使用全局功能模型 API 设置（AI视角对话功能）
+                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                           ? db.functionalApiSettings 
+                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
                 const conversation = extractAndParseJson(aiResponseText);
 
                
@@ -18445,14 +18638,20 @@ async function generateBackgroundChat(characterA) {
     请直接开始生成JSON，不要包含任何额外的解释。`;
 
     try {
+        // 修改：使用全局功能模型 API 设置（AI后台对话功能）
+        const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                   db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                   ? db.functionalApiSettings 
+                                   : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+        
         let messagesForApi;
-        if (db.apiSettings.provider === 'gemini') {
+        if (functionalSettings.provider === 'gemini') {
             messagesForApi = [{ role: 'user', parts: [{ type: 'text', text: prompt }] }];
         } else {
             messagesForApi = [{ role: 'user', content: prompt }];
         }
         
-        const aiResponseText = await callAiApi(messagesForApi);
+        const aiResponseText = await callAiApi(messagesForApi, functionalSettings);
         const jsonMatch = aiResponseText.match(/\[[\s\S]*?\]/);
         if (!jsonMatch) {
             console.warn("背景对话生成失败: AI回复中未找到有效的JSON数组。", aiResponseText);
@@ -18888,7 +19087,12 @@ async function triggerProactiveMessage(chatObject, type) {
             ...historyForApi.map(msg => ({ role: msg.role, content: msg.content }))
         ];
 
-        const aiResponseText = await callAiApi(messages);
+        // 修改：使用全局功能模型 API 设置（AI后台主动回复功能）
+        const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                   db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                   ? db.functionalApiSettings 
+                                   : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+        const aiResponseText = await callAiApi(messages, functionalSettings);
 
         // 重要：在处理回复前，先从历史记录中移除我们添加的系统指令，避免污染历史
         chatObject.history.pop();
@@ -19038,7 +19242,12 @@ async function triggerProactiveMomentInteraction(character) {
 - 绝对不要回复任何其他内容。`;
 
         const messagesForApi = [{ role: 'user', content: prompt }];
-        const aiResponseText = await callAiApi(messagesForApi);
+        // 修改：使用全局功能模型 API 设置（AI自动互动动态功能）
+        const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                   db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                   ? db.functionalApiSettings 
+                                   : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+        const aiResponseText = await callAiApi(messagesForApi, functionalSettings);
 
         const likeRegex = /\[(.*?)点赞动态：({.*?})\]/;
         const commentRegex = /\[(.*?)评论动态：({.*?})\]/;
@@ -19369,7 +19578,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 }
               ]
            }
-           请为 ${char.realName} 编造5-7个最近的对话。对话内容需要强烈反映Ta的人设以及和我的聊天上下文。`;
+           请为 ${char.realName} 编造4-7个最近的对话。对话内容需要强烈反映Ta的人设以及和我的聊天上下文。`;
             break;
         case 'album':
             prompt += `
@@ -19379,7 +19588,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 { "type": "video", "imageDescription": "对一段视频的详细文字描述，例如：一段在猫咖撸猫的视频，视频里有一只橘猫在打哈欠。", "description": "角色对这段视频的一句话批注，例如：下次还来这里！" }
               ]
             }
-            请为 ${char.realName} 的相册生成8-10个条目（照片或视频）。内容需要与Ta的人设和我们的聊天上下文高度相关。'imageDescription' 是对这张照片/视频的详细文字描述，它将代替真实的图片展示给用户。'description' 是 ${char.realName} 自己对这张照片/视频的一句话批注，会显示在描述下方。`;
+            请为 ${char.realName} 的相册生成7-10个条目（照片或视频）。内容需要与Ta的人设和我们的聊天上下文高度相关。'imageDescription' 是对这张照片/视频的详细文字描述，它将代替真实的图片展示给用户。'description' 是 ${char.realName} 自己对这张照片/视频的一句话批注，会显示在描述下方。`;
             break;
         case 'memos':
             prompt += `
@@ -19388,7 +19597,7 @@ function generatePeekContentPrompt(char, appType, mainChatContext) {
                 { "id": "memo_1", "title": "备忘录标题", "content": "备忘录内容，可以包含换行符\\n" }
               ]
             }
-            请生成6-10条备忘录，内容要与Ta的人设和我们的聊天上下文相关。`;
+            请生成5-10条备忘录，内容要与Ta的人设和我们的聊天上下文相关。`;
             break;
         case 'cart':
             prompt += `
@@ -19543,9 +19752,14 @@ async function generateAndRenderPeekContent(appType, char, options = {}) {
     }
 
     // 如果没有数据或强制刷新，则调用 API 生成
-    const { url, key, model, provider } = db.apiSettings;
-    if (!url || !key || !model) {
-        showToast('请先在"api"应用中完成设置！');
+    // 修改：使用全局功能模型 API 设置
+    const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                               db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                               ? db.functionalApiSettings 
+                               : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+    
+    if (!functionalSettings.url || !functionalSettings.key || !functionalSettings.model) {
+        showToast('请先在"api"应用中完成全局功能模型设置！');
         return switchScreen('api-settings-screen');
     }
 
@@ -19603,25 +19817,9 @@ async function generateAndRenderPeekContent(appType, char, options = {}) {
         const mainChatContext = char.history.slice(-10).map(m => m.content).join('\n');
         const systemPrompt = generatePeekContentPrompt(char, appType, mainChatContext);
         
-        const requestBody = {
-            model: model,
-            messages: [{ role: 'user', content: systemPrompt }],
-            temperature: 0.8,
-            top_p: 0.9,
-        };
-
-        const endpoint = `${url}/v1/chat/completions`;
-        const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
-
-        const response = await fetch(endpoint, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
-        if (!response.ok) {
-            const error = new Error(`API Error: ${response.status} ${await response.text()}`);
-            error.response = response;
-            throw error;
-        }
-        
-        const result = await response.json();
-        let contentStr = result.choices[0].message.content;
+        // 修改：使用 callAiApi 函数，并显式传入 functionalApiSettings
+        const messages = [{ role: 'user', content: systemPrompt }];
+        let contentStr = await callAiApi(messages, functionalSettings);
         
         console.log(`[${appType}] AI原始返回:`, contentStr); // 方便调试
 
@@ -20301,15 +20499,21 @@ function setupDiaryExchangeApp() {
         try {
             const prompt = generateDiaryExchangePrompt(character, userContent, tempImageDataUrl);
             
+            // 修改：使用全局功能模型 API 设置（交换日记功能）
+            const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
+                                       db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
+                                       ? db.functionalApiSettings 
+                                       : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
+            
             let messagesForApi;
-            if (db.apiSettings.provider === 'claude' && tempImageDataUrl) {
+            if (functionalSettings.provider === 'claude' && tempImageDataUrl) {
                 const base64Match = tempImageDataUrl.match(/^data:(image\/.+);base64,(.*)$/);
                 messagesForApi = [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image', source: { type: 'base64', media_type: base64Match[1], data: base64Match[2] } }] }];
             } else {
                  messagesForApi = [{ role: 'user', content: prompt }];
             }
 
-            const aiResponseText = await callAiApi(messagesForApi);
+            const aiResponseText = await callAiApi(messagesForApi, functionalSettings);
             
             // AI返回的数据可能包含封面信息
             const responseData = JSON.parse(aiResponseText);
@@ -20855,34 +21059,109 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
     (window.showToast && showToast('API 预设已保存')) || console.log('API 预设已保存');
   }
 
-  async function applyApiPreset(name) {
+  // 修改：新增两个函数，分别应用到主模型和功能模型
+  async function applyApiPresetToMain(name) {
     const presets = _getApiPresets();
     const p = presets.find(x => x.name === name);
     if (!p) return (window.showToast && showToast('未找到该预设')) || alert('未找到该预设');
-    // Try to populate detected fields
+    
     try {
-      const apiKeyEl = document.querySelector('#setting-api-key, input[name="apiKey"], input[id*="api-key"], input[id*="apikey"]');
-      const apiUrlEl = document.querySelector('#setting-api-url, input[name="apiUrl"], input[id*="api-url"], input[id*="apiurl"]');
-      const providerEl = document.querySelector('#setting-api-provider, select[name="provider"], select[id*="provider"]');
+      // 填充主聊天模型区域
+      const mainProvider = document.getElementById('api-provider');
+      const mainUrl = document.getElementById('api-url');
+      const mainKey = document.getElementById('api-key');
+      const mainModel = document.getElementById('api-model');
 
-      if (apiKeyEl && p.data && typeof p.data.apiKey !== 'undefined') apiKeyEl.value = p.data.apiKey;
-      if (apiUrlEl && p.data && typeof p.data.apiUrl !== 'undefined') apiUrlEl.value = p.data.apiUrl;
-      if (providerEl && p.data && typeof p.data.provider !== 'undefined') providerEl.value = p.data.provider;
-
-      // populate raw fields if present
-      if (p.data && p.data.raw) {
-        for (const k in p.data.raw) {
-          try {
-            const el = document.querySelector('#'+k+', [name="'+k+'"]');
-            if (el) el.value = p.data.raw[k];
-          } catch(e){}
+      if (mainProvider && p.data && typeof p.data.provider !== 'undefined') {
+        mainProvider.value = p.data.provider;
+        // 触发 change 事件以自动填充 URL
+        mainProvider.dispatchEvent(new Event('change'));
+      }
+      if (mainUrl && p.data && typeof p.data.apiUrl !== 'undefined') {
+        mainUrl.value = p.data.apiUrl;
+      }
+      if (mainKey && p.data && typeof p.data.apiKey !== 'undefined') {
+        mainKey.value = p.data.apiKey;
+      }
+      if (mainModel && p.data) {
+        // 尝试从多个位置获取 model 值
+        const modelValue = (p.data.raw && (p.data.raw['api-model'] || p.data.raw['model'])) || p.data.model || '';
+        if (modelValue) {
+          // 检查该选项是否已存在
+          const existingOption = Array.from(mainModel.options).find(opt => opt.value === modelValue);
+          if (!existingOption) {
+            // 如果不存在，添加新选项
+            const option = document.createElement('option');
+            option.value = modelValue;
+            option.textContent = modelValue;
+            mainModel.appendChild(option);
+          }
+          mainModel.value = modelValue;
+          // 触发 change 事件以更新 UI
+          mainModel.dispatchEvent(new Event('change'));
         }
       }
 
-      (window.showToast && showToast('已应用 API 预设')) || console.log('已应用 API 预设');
+      (window.showToast && showToast('预设已应用到主聊天模型')) || console.log('预设已应用到主聊天模型');
     } catch(e) {
-      console.error('applyApiPreset error', e);
+      console.error('applyApiPresetToMain error', e);
+      (window.showToast && showToast('应用失败：' + e.message)) || alert('应用失败：' + e.message);
     }
+  }
+
+  async function applyApiPresetToFunc(name) {
+    const presets = _getApiPresets();
+    const p = presets.find(x => x.name === name);
+    if (!p) return (window.showToast && showToast('未找到该预设')) || alert('未找到该预设');
+    
+    try {
+      // 填充全局功能模型区域
+      const funcProvider = document.getElementById('func-api-provider');
+      const funcUrl = document.getElementById('func-api-url');
+      const funcKey = document.getElementById('func-api-key');
+      const funcModel = document.getElementById('func-api-model');
+
+      if (funcProvider && p.data && typeof p.data.provider !== 'undefined') {
+        funcProvider.value = p.data.provider;
+        // 触发 change 事件以自动填充 URL
+        funcProvider.dispatchEvent(new Event('change'));
+      }
+      if (funcUrl && p.data && typeof p.data.apiUrl !== 'undefined') {
+        funcUrl.value = p.data.apiUrl;
+      }
+      if (funcKey && p.data && typeof p.data.apiKey !== 'undefined') {
+        funcKey.value = p.data.apiKey;
+      }
+      if (funcModel && p.data) {
+        // 尝试从多个位置获取 model 值（优先查找功能模型专用字段，然后回退到通用字段）
+        const modelValue = (p.data.raw && (p.data.raw['func-api-model'] || p.data.raw['api-model'] || p.data.raw['model'])) || p.data.model || '';
+        if (modelValue) {
+          // 检查该选项是否已存在
+          const existingOption = Array.from(funcModel.options).find(opt => opt.value === modelValue);
+          if (!existingOption) {
+            // 如果不存在，添加新选项
+            const option = document.createElement('option');
+            option.value = modelValue;
+            option.textContent = modelValue;
+            funcModel.appendChild(option);
+          }
+          funcModel.value = modelValue;
+          // 触发 change 事件以更新 UI
+          funcModel.dispatchEvent(new Event('change'));
+        }
+      }
+
+      (window.showToast && showToast('预设已应用到全局功能模型')) || console.log('预设已应用到全局功能模型');
+    } catch(e) {
+      console.error('applyApiPresetToFunc error', e);
+      (window.showToast && showToast('应用失败：' + e.message)) || alert('应用失败：' + e.message);
+    }
+  }
+
+  // 保留原函数以兼容旧代码（如果还有地方在使用）
+  async function applyApiPreset(name) {
+    // 默认应用到主模型（向后兼容）
+    await applyApiPresetToMain(name);
   }
 
   function openApiManageModal() {
@@ -20910,15 +21189,30 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
       const btns = document.createElement('div');
       btns.style.display = 'flex';
       btns.style.gap = '6px';
+      btns.style.flexWrap = 'wrap'; // 允许按钮换行
 
-      const applyBtn = document.createElement('button');
-      applyBtn.className = 'btn';
-      applyBtn.textContent = '应用';
-      applyBtn.onclick = function(){ applyApiPreset(p.name); modal.style.display='none'; };
+      // 修改：将单个"应用"按钮改为两个按钮
+      const applyMainBtn = document.createElement('button');
+      applyMainBtn.className = 'btn btn-primary';
+      applyMainBtn.textContent = '应用为主模型';
+      applyMainBtn.style.fontSize = '12px';
+      applyMainBtn.style.padding = '4px 8px';
+      applyMainBtn.dataset.presetName = p.name;
+      applyMainBtn.onclick = function(){ applyApiPresetToMain(p.name); };
+
+      const applyFuncBtn = document.createElement('button');
+      applyFuncBtn.className = 'btn btn-secondary';
+      applyFuncBtn.textContent = '应用为功能模型';
+      applyFuncBtn.style.fontSize = '12px';
+      applyFuncBtn.style.padding = '4px 8px';
+      applyFuncBtn.dataset.presetName = p.name;
+      applyFuncBtn.onclick = function(){ applyApiPresetToFunc(p.name); };
 
       const renameBtn = document.createElement('button');
       renameBtn.className = 'btn';
       renameBtn.textContent = '重命名';
+      renameBtn.style.fontSize = '12px';
+      renameBtn.style.padding = '4px 8px';
       renameBtn.onclick = function(){
         const newName = prompt('输入新名称：', p.name);
         if (!newName) return;
@@ -20932,9 +21226,14 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
       const delBtn = document.createElement('button');
       delBtn.className = 'btn';
       delBtn.textContent = '删除';
+      delBtn.style.fontSize = '12px';
+      delBtn.style.padding = '4px 8px';
       delBtn.onclick = function(){ if(!confirm('确定删除 "'+p.name+'" ?')) return; const all=_getApiPresets(); all.splice(idx,1); _saveApiPresets(all); openApiManageModal(); populateApiSelect(); };
 
-      btns.appendChild(applyBtn); btns.appendChild(renameBtn); btns.appendChild(delBtn);
+      btns.appendChild(applyMainBtn);
+      btns.appendChild(applyFuncBtn);
+      btns.appendChild(renameBtn);
+      btns.appendChild(delBtn);
 
       row.appendChild(left); row.appendChild(btns);
       list.appendChild(row);
