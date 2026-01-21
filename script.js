@@ -6420,7 +6420,7 @@ function renderCustomizeForm() {
                 try {
                     // 新增：收集所有localStorage中的预设数据
                     const localStorageData = {};
-                    const presetKeys = ['fontPresets', 'apiPresets', 'bubblePresets', 'myPersonaPresets'];
+                    const presetKeys = ['fontPresets', 'apiPresets', 'bubblePresets', 'myPersonaPresets', 'soul_bond_roster'];
                     presetKeys.forEach(key => {
                         const data = localStorage.getItem(key);
                         if (data) {
@@ -6493,6 +6493,19 @@ function renderCustomizeForm() {
                                 Object.entries(importedObject.localStorageData).forEach(([key, value]) => {
                                     localStorage.setItem(key, value);
                                 });
+                                // 特别处理 soul_bond_roster：确保心动羁绊名册被正确恢复
+                                if (importedObject.localStorageData['soul_bond_roster']) {
+                                    localStorage.setItem('soul_bond_roster', importedObject.localStorageData['soul_bond_roster']);
+                                    // 验证名册数据格式并刷新绑定状态
+                                    try {
+                                        const roster = JSON.parse(importedObject.localStorageData['soul_bond_roster']);
+                                        if (Array.isArray(roster) && roster.length > 0) {
+                                            console.log('✅ 心动羁绊名册已恢复:', roster);
+                                        }
+                                    } catch (e) {
+                                        console.warn('⚠️ 恢复心动羁绊名册时格式验证失败:', e);
+                                    }
+                                }
                             }
                             dbDataToSave = importedObject.dbData;
                         } else { // 旧格式
