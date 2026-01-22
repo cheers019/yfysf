@@ -84,6 +84,281 @@ const showToast = (message) => {
             setTimeout(() => toastElement.classList.remove('show'), 3000);
         };
         const pad = (num) => num.toString().padStart(2, '0');
+// ===============================================================
+// Token 统计辅助函数
+// ===============================================================
+
+/**
+ * 估算文本的 Token 数量（针对中文环境的粗略估算）
+ * @param {string} text - 要估算的文本
+ * @returns {number} - 估算的 Token 数量
+ */
+function estimateTokenCount(text) {
+    if (!text || typeof text !== 'string' || text.length === 0) {
+        return 0;
+    }
+    // 针对中文环境的粗略估算：字符数 * 1.5
+    return Math.ceil(text.length * 1.5);
+}
+
+/**
+ * 计算当前上下文的 Token 数量
+ * @param {Object} chat - 聊天对象（角色或群组）
+ * @param {string} chatType - 聊天类型 ('private' 或 'group')
+ * @returns {Object} - 包含各部分 Token 数量的对象
+ */
+function calculateCurrentContextTokens(chat, chatType) {
+    if (!chat) {
+        return { system: 0, worldInfo: 0, history: 0, stickers: 0, total: 0 };
+    }
+    
+    // 1. 计算 System Prompt 的 Token 数
+    let systemPrompt = '';
+    if (chatType === 'private') {
+        // 模拟生成 system prompt（不实际调用函数，避免副作用）
+        const character = chat;
+        const currentTime = new Date().toLocaleString('zh-CN');
+        const persona = character.persona || '';
+        const myPersona = character.myPersona || '';
+        const realName = character.realName || '';
+        const myName = character.myName || '';
+        
+        // 基础 prompt 结构估算
+        systemPrompt = `你正在一个名为"404"的线上聊天软件中扮演一个角色。\n角色名是：${realName}。我的称呼是：${myName}。\n你的角色设定是：${persona}\n关于我的人设：${myPersona}\n当前时间：${currentTime}`;
+        
+        // 添加效果提示（如果有）
+        if (character.activeEffects && character.activeEffects.length > 0) {
+            systemPrompt += `\n当前生效的特殊效果...`;
+        }
+        
+        // 添加其他规则提示
+        systemPrompt += `\n行为准则、消息格式规则、对话节奏等...`;
+    } else {
+        // 群组模式
+        const group = chat;
+        const groupName = group.name || '';
+        const members = group.members || [];
+        const memberInfo = members.map(m => `${m.groupNickname || m.realName}: ${m.persona || ''}`).join('\n');
+        systemPrompt = `你正在一个名为"404"的群聊中。群名：${groupName}\n成员信息：\n${memberInfo}`;
+    }
+    
+    const systemTokens = estimateTokenCount(systemPrompt);
+    
+    // 2. 计算世界书条目的 Token 数
+    let worldInfoTokens = 0;
+    if (chatType === 'private' && chat.worldBookIds && Array.isArray(chat.worldBookIds)) {
+        // 查找最后一条用户消息（兼容 findLast 方法）
+        let lastUserMessage = null;
+        if (chat.history && Array.isArray(chat.history)) {
+            if (typeof chat.history.findLast === 'function') {
+                lastUserMessage = chat.history.findLast(m => m.role === 'user');
+            } else {
+                // 兼容旧版：从后往前查找
+                for (let i = chat.history.length - 1; i >= 0; i--) {
+                    if (chat.history[i].role === 'user') {
+                        lastUserMessage = chat.history[i];
+                        break;
+                    }
+                }
+            }
+        }
+        const lastUserContent = lastUserMessage ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '') : '';
+        
+        const triggeredWorldBooks = chat.worldBookIds
+            .map(id => db.worldBooks ? db.worldBooks.find(wb => wb.id === id) : null)
+            .filter(book => {
+                if (!book) return false;
+                if (book.alwaysActive) return true;
+                if (!book.keywords || !lastUserContent) return false;
+                const keywords = book.keywords.split(',').map(k => k.trim()).filter(Boolean);
+                if (keywords.length === 0) return false;
+                const contentToSearch = book.caseSensitive ? lastUserContent : lastUserContent.toLowerCase();
+                return keywords.some(keyword => {
+                    const keywordToSearch = book.caseSensitive ? keyword : keyword.toLowerCase();
+                    return contentToSearch.includes(keywordToSearch);
+                });
+            });
+        
+        const worldBooksText = triggeredWorldBooks.map(wb => wb.content || '').join('\n');
+        worldInfoTokens = estimateTokenCount(worldBooksText);
+    }
+    
+    // 3. 计算历史消息的 Token 数
+    let historyTokens = 0;
+    if (chat.history && Array.isArray(chat.history)) {
+        const maxMemory = chat.maxMemory || 10;
+        const historySlice = chat.history.slice(-maxMemory).filter(msg => msg.role !== 'system');
+        
+        // 计算每条消息的 Token 数
+        historySlice.forEach(msg => {
+            let content = '';
+            if (typeof msg.content === 'string') {
+                content = msg.content;
+            } else if (Array.isArray(msg.content)) {
+                // 处理包含图片的消息
+                const textParts = msg.content.filter(p => p.type === 'text').map(p => p.text || '').join('');
+                content = textParts;
+            } else if (msg.content) {
+                content = JSON.stringify(msg.content);
+            }
+            historyTokens += estimateTokenCount(content);
+        });
+    }
+    
+    // 4. 计算表情包的 Token 数（仅私聊模式）
+    let stickersTokens = 0;
+    if (chatType === 'private') {
+        const character = chat;
+        // 获取角色绑定的表情包分组
+        let availableStickers = [];
+        if (db.myStickers && Array.isArray(db.myStickers) && db.myStickers.length > 0) {
+            // 获取角色绑定的分组
+            let allowedGroups = [];
+            // 严格区分 undefined/null（未配置）和 ''（已配置但为空）
+            if (character.stickerGroups !== undefined && character.stickerGroups !== null) {
+                // 已配置过（包括空字符串 ''）
+                if (typeof character.stickerGroups === 'string' && character.stickerGroups.trim() !== '') {
+                    allowedGroups = character.stickerGroups.split(',').map(g => g.trim()).filter(Boolean);
+                }
+                // 如果 character.stickerGroups === ''，allowedGroups 保持为 []（已禁用）
+            }
+            // 如果 character.stickerGroups 是 undefined 或 null，allowedGroups 保持为 []（未配置，禁用）
+            
+            // 如果有绑定的分组，筛选表情包
+            if (allowedGroups.length > 0) {
+                availableStickers = db.myStickers.filter(sticker => {
+                    const stickerGroup = (sticker.group || '未分类').trim();
+                    return allowedGroups.includes(stickerGroup);
+                });
+            }
+            
+            // 如果有可用表情包，计算 Token
+            if (availableStickers.length > 0) {
+                const stickerNames = availableStickers.map(s => s.name).join(', ');
+                // 模拟发送给 AI 时的完整格式（参考 10087 行的格式）
+                const stickersPrompt = `11. **发送表情包的规则**: 你拥有发送表情包的能力。这是一个可选功能，你可以根据对话氛围和内容，自行判断是否需要发送表情包来辅助表达，你不必在每次回复中都包含表情包。这是你的表情包库：[${stickerNames}]。当你想要发送表情包时，你的回复必须严格遵循格式：\`[${character.realName}发送的表情包：{表情包名称}]\`禁止编造表情包库里没有的表情包。\n`;
+                stickersTokens = estimateTokenCount(stickersPrompt);
+            }
+        }
+    }
+    
+    const totalTokens = systemTokens + worldInfoTokens + historyTokens + stickersTokens;
+    
+    return {
+        system: systemTokens,
+        worldInfo: worldInfoTokens,
+        history: historyTokens,
+        stickers: stickersTokens,
+        total: totalTokens
+    };
+}
+
+/**
+ * 更新 Token 统计按钮的显示
+ */
+function updateTokenStatsButton() {
+    const tokenStatsLabel = document.getElementById('token-stats-label');
+    if (!tokenStatsLabel) return;
+    
+    try {
+        // 固定显示为 "Token"
+        tokenStatsLabel.textContent = 'Token';
+    } catch (error) {
+        console.error('更新 Token 统计按钮失败:', error);
+        if (tokenStatsLabel) {
+            tokenStatsLabel.textContent = 'Token';
+        }
+    }
+}
+
+/**
+ * 打开 Token 统计弹窗
+ */
+function openTokenStatsModal() {
+    const modal = document.getElementById('token-stats-modal');
+    if (!modal) return;
+    
+    try {
+        // 从 DOM 属性获取当前聊天 ID 和类型（最稳妥的方式）
+        const chatId = document.body ? document.body.getAttribute('data-current-chat-id') : null;
+        const chatType = document.body ? document.body.getAttribute('data-current-chat-type') : null;
+        
+        if (!chatId) {
+            showToast('请先打开一个聊天');
+            return;
+        }
+        
+        // 根据类型获取聊天对象
+        let chat = null;
+        let type = chatType || 'private'; // 默认为私聊
+        
+        if (chatType === 'group') {
+            // 群聊
+            if (db.groups && Array.isArray(db.groups)) {
+                chat = db.groups.find(g => g.id === chatId);
+            }
+        } else {
+            // 私聊（默认）
+            if (db.characters && Array.isArray(db.characters)) {
+                chat = db.characters.find(c => c.id === chatId);
+            }
+        }
+        
+        // 如果都找不到，返回错误
+        if (!chat) {
+            showToast('无法获取当前聊天信息');
+            return;
+        }
+        
+        // 重新计算当前上下文的 Token 数
+        const contextTokens = calculateCurrentContextTokens(chat, type);
+        
+        // 更新静态估算数据
+        const systemEl = document.getElementById('token-stats-system');
+        const worldInfoEl = document.getElementById('token-stats-worldinfo');
+        const historyEl = document.getElementById('token-stats-history');
+        const stickersEl = document.getElementById('token-stats-stickers');
+        const messageCountEl = document.getElementById('token-stats-message-count');
+        const lastUsageEl = document.getElementById('token-stats-last-usage');
+        const totalEl = document.getElementById('token-stats-total');
+        
+        if (systemEl) systemEl.textContent = contextTokens.system.toLocaleString();
+        if (worldInfoEl) worldInfoEl.textContent = contextTokens.worldInfo.toLocaleString();
+        if (historyEl) historyEl.textContent = contextTokens.history.toLocaleString();
+        if (stickersEl) stickersEl.textContent = (contextTokens.stickers || 0).toLocaleString();
+        
+        // 更新统计数据
+        const messageCount = chat.history ? chat.history.filter(m => m.role !== 'system').length : 0;
+        if (messageCountEl) messageCountEl.textContent = messageCount.toLocaleString();
+        
+        const lastUsage = (db.tokenUsage && db.tokenUsage.lastUsage) ? db.tokenUsage.lastUsage : 0;
+        if (lastUsageEl) lastUsageEl.textContent = lastUsage > 0 ? lastUsage.toLocaleString() : '-';
+        
+        // 更新总计（确保包含表情包 Token）
+        if (totalEl) totalEl.textContent = contextTokens.total.toLocaleString();
+        
+        // 显示弹窗
+        modal.style.display = 'flex';
+    } catch (error) {
+        console.error('打开 Token 统计弹窗失败:', error);
+        showToast('打开统计弹窗失败');
+    }
+}
+
+/**
+ * 关闭 Token 统计弹窗
+ */
+function closeTokenStatsModal() {
+    const modal = document.getElementById('token-stats-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// ===============================================================
+// END: Token 统计辅助函数
+// ===============================================================
+
 // ▼▼▼ 请复制以下完整代码，替换原文件中的 callAiApi 函数 ▼▼▼
 
 async function callAiApi(messages, customApiSettings = null) {
@@ -161,11 +436,22 @@ async function callAiApi(messages, customApiSettings = null) {
                 return { role, parts };
             });
 
+        // 判断使用的温度值：如果使用的是功能模型配置，使用功能温度；否则使用聊天温度
+        const isUsingFunctionalSettings = (settings === db.functionalApiSettings || 
+            (settings.url === db.functionalApiSettings?.url && settings.key === db.functionalApiSettings?.key));
+        const temperature = isUsingFunctionalSettings
+            ? ((db.functionalApiSettings && typeof db.functionalApiSettings.functionalTemperature !== 'undefined') 
+                ? db.functionalApiSettings.functionalTemperature 
+                : 1.0)
+            : ((db.apiSettings && typeof db.apiSettings.chatTemperature !== 'undefined') 
+                ? db.apiSettings.chatTemperature 
+                : 1.0);
+        
         requestBody = {
             contents: contents,
             generationConfig: {
-                maxOutputTokens: 8192
-                // 可以根据需要调整温度等参数
+                maxOutputTokens: 8192,
+                temperature: temperature
             }
         };
         
@@ -185,11 +471,23 @@ async function callAiApi(messages, customApiSettings = null) {
 
         headers['Authorization'] = `Bearer ${getRandomValue(key)}`;
         
+        // 判断使用的温度值：如果使用的是功能模型配置，使用功能温度；否则使用聊天温度
+        const isUsingFunctionalSettings = (settings === db.functionalApiSettings || 
+            (settings.url === db.functionalApiSettings?.url && settings.key === db.functionalApiSettings?.key));
+        const temperature = isUsingFunctionalSettings
+            ? ((db.functionalApiSettings && typeof db.functionalApiSettings.functionalTemperature !== 'undefined') 
+                ? db.functionalApiSettings.functionalTemperature 
+                : 1.0)
+            : ((db.apiSettings && typeof db.apiSettings.chatTemperature !== 'undefined') 
+                ? db.apiSettings.chatTemperature 
+                : 1.0);
+        
         requestBody = {
             model,
             messages,
             stream: false, // 这里的调用通常不需要流式
-            max_tokens: 8192
+            max_tokens: 8192,
+            temperature: temperature
         };
     }
 
@@ -210,6 +508,19 @@ async function callAiApi(messages, customApiSettings = null) {
     }
 
     const data = await response.json();
+
+    // 捕捉真实 Token 消耗
+    if (data.usage) {
+        const totalTokens = data.usage.total_tokens || data.usage.totalTokens || 0;
+        if (totalTokens > 0) {
+            if (!db.tokenUsage) db.tokenUsage = {};
+            db.tokenUsage.lastUsage = totalTokens;
+            db.tokenUsage.lastPromptTokens = data.usage.prompt_tokens || data.usage.promptTokens || 0;
+            db.tokenUsage.lastCompletionTokens = data.usage.completion_tokens || data.usage.completionTokens || 0;
+            db.tokenUsage.lastTimestamp = Date.now();
+            console.log(`📊 Token 使用统计: 总计 ${totalTokens} (输入: ${db.tokenUsage.lastPromptTokens}, 输出: ${db.tokenUsage.lastCompletionTokens})`);
+        }
+    }
 
     // 解析响应内容
     if (provider === 'gemini') {
@@ -302,6 +613,20 @@ document.getElementById('api-settings-screen').innerHTML = `<header class="app-h
             <option value="">请先拉取模型列表</option>
         </select>
     </div>
+    
+    <!-- 聊天回复温度调节 -->
+    <div class="form-group" style="margin-top: 20px; border-top: 1px solid #e0e0e0; padding-top: 15px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <label for="chat-temperature-slider" style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 0;">聊天回复温度 (Temperature)</label>
+            <span id="chat-temperature-value" style="font-size: 16px; font-weight: 600; color: #4c9ffe; min-width: 40px; text-align: right;">1.0</span>
+        </div>
+        <div style="position: relative; margin: 10px 0;">
+            <input type="range" id="chat-temperature-slider" min="0" max="2" step="0.1" value="1.0" style="width: 100%; height: 8px; border-radius: 4px; background: #e0e0e0; outline: none; -webkit-appearance: none; appearance: none; cursor: pointer;">
+        </div>
+        <p style="font-size: 11px; color: #888; margin-top: 8px; margin-bottom: 0;">
+            数值越大越随机（更有创造力），数值越小越严谨（更逻辑化）
+        </p>
+    </div>
 </fieldset>
 
 <!-- ⚙️ 全局功能模型区域 -->
@@ -338,6 +663,20 @@ document.getElementById('api-settings-screen').innerHTML = `<header class="app-h
         <select id="func-api-model" name="func-model" required>
             <option value="">请先拉取模型列表</option>
         </select>
+    </div>
+    
+    <!-- 功能调用温度调节 -->
+    <div class="form-group" style="margin-top: 20px; border-top: 1px solid #e0e0e0; padding-top: 15px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <label for="functional-temperature-slider" style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 0;">功能调用温度 (Temperature)</label>
+            <span id="functional-temperature-value" style="font-size: 16px; font-weight: 600; color: #4c9ffe; min-width: 40px; text-align: right;">1.0</span>
+        </div>
+        <div style="position: relative; margin: 10px 0;">
+            <input type="range" id="functional-temperature-slider" min="0" max="2" step="0.1" value="1.0" style="width: 100%; height: 8px; border-radius: 4px; background: #e0e0e0; outline: none; -webkit-appearance: none; appearance: none; cursor: pointer;">
+        </div>
+        <p style="font-size: 11px; color: #888; margin-top: 8px; margin-bottom: 0;">
+            数值越大越随机（更有创造力），数值越小越严谨（更逻辑化）
+        </p>
     </div>
 </fieldset>
 
@@ -675,6 +1014,7 @@ const defaultIcons = {
             groups: [],
             apiSettings: {},
             functionalApiSettings: {}, // 新增：全局功能模型配置
+            tokenUsage: {}, // Token 使用统计
             wallpaper: 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg',
             wallpaper2: 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg', // 新增：第二页壁纸
             myStickers: [],
@@ -1620,9 +1960,17 @@ db.groups.forEach(g => {
     db.uncategorizedCollapsed = false; // 默认不折叠
 }// 初始化默认值
             if (!db.apiSettings) db.apiSettings = {};
+            // 新增：初始化主聊天温度设置，默认值 1.0
+            if (db.apiSettings.chatTemperature === undefined) {
+                db.apiSettings.chatTemperature = 1.0;
+            }
             // 新增：确保 functionalApiSettings 有默认值
             if (!db.functionalApiSettings || Object.keys(db.functionalApiSettings).length === 0) {
                 db.functionalApiSettings = JSON.parse(JSON.stringify(db.apiSettings || {}));
+            }
+            // 新增：初始化功能模型温度设置，默认值 1.0
+            if (db.functionalApiSettings.functionalTemperature === undefined) {
+                db.functionalApiSettings.functionalTemperature = 1.0;
             }
 if (!db.wallet) {
     db.wallet = {
@@ -1765,7 +2113,10 @@ async function migrateCharacterStickerBindings() {
     
     db.characters.forEach(char => {
         // 如果有旧的 shareStickers 字段
-        if (char.shareStickers === true && !char.stickerGroups) {
+        // 严格区分 undefined/null（未配置）和 ''（已配置但为空）
+        if (char.shareStickers === true && (char.stickerGroups === undefined || char.stickerGroups === null)) {
+            // 只有当 stickerGroups 是 undefined 或 null 时，才进行迁移
+            // 如果它是 ''（空字符串），说明用户已经明确清空了，不要动它
             // 将所有分组绑定给该角色（保持旧行为）
             const allGroups = [...new Set(
                 db.myStickers
@@ -1774,7 +2125,9 @@ async function migrateCharacterStickerBindings() {
             )];
             char.stickerGroups = allGroups.join(',');
             needSave = true;
-        } else if (char.stickerGroups === undefined) {
+        } else if (char.stickerGroups === undefined || char.stickerGroups === null) {
+            // 只有当 stickerGroups 是 undefined 或 null 时，才初始化为空字符串
+            // 如果它已经是 ''（空字符串），说明用户已经明确清空了，不要动它
             char.stickerGroups = '';  // 初始化为空（不绑定任何表情）
             needSave = true;
         }
@@ -7524,6 +7877,9 @@ function setupChatRoom() {
                         showToast('此功能仅在私聊中可用');
                     }
                     break;
+                case 'token-stats':
+                    openTokenStatsModal();
+                    break;
             }
         });
     }
@@ -7774,6 +8130,12 @@ menuItems.push({
             const chat = (type === 'private') ? db.characters.find(c => c.id === chatId) : db.groups.find(g => g.id === chatId);
             if (!chat) return;
 
+            // 将当前聊天 ID 和类型存储到 DOM 属性中（用于 Token 统计等功能）
+            if (document.body) {
+                document.body.setAttribute('data-current-chat-id', chatId);
+                document.body.setAttribute('data-current-chat-type', type);
+            }
+
             // 修改：处理暂存消息的逻辑已被移除
 
             // 后续逻辑保持不变，但重新梳理了渲染顺序
@@ -7834,6 +8196,10 @@ menuItems.push({
             
             setTimeout(() => {
                 renderMessages(false, !window.targetMessageIdForHighlight);
+                // 更新 Token 统计按钮
+                if (typeof updateTokenStatsButton === 'function') {
+                    updateTokenStatsButton();
+                }
             }, 50);
         }
 // --- 新代码结束 ---
@@ -8502,6 +8868,10 @@ async function sendMessage(targetInput = null) {
             chat.pendingMessages.push(message);
             addMessageBubble(message);
             await saveData();
+            // 更新 Token 统计按钮
+            if (typeof updateTokenStatsButton === 'function') {
+                setTimeout(() => updateTokenStatsButton(), 100);
+            }
             // 🆕 输入框已在函数开头清空，此处不再需要
             return;
         }
@@ -8663,6 +9033,10 @@ async function sendMessage(targetInput = null) {
         chat.history.push(message);
         addMessageBubble(message);
         await saveData();
+        // 更新 Token 统计按钮
+        if (typeof updateTokenStatsButton === 'function') {
+            setTimeout(() => updateTokenStatsButton(), 100);
+        }
         renderChatList();
         if (chat.povCache) {
             chat.povCache = null;
@@ -10130,6 +10504,10 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 if (typeof addMessageBubble === 'function') {
                     addMessageBubble(message); 
                 }
+                // 更新 Token 统计按钮
+                if (typeof updateTokenStatsButton === 'function') {
+                    setTimeout(() => updateTokenStatsButton(), 100);
+                }
             } else {
                 // 3. 否则，如果不匹配（即你在看A，B发了消息），则弹窗提示
                 if (!hasNotified) {
@@ -10340,11 +10718,17 @@ async function getAiReply() {
                 }
                 return { role, parts };
             });
+            // 获取主聊天温度设置，默认值 1.0
+            const temperature = (db.apiSettings && typeof db.apiSettings.chatTemperature !== 'undefined') 
+                ? db.apiSettings.chatTemperature 
+                : 1.0;
+            
             requestBody = {
                 contents: contents,
                 system_instruction: { parts: [{ text: systemPrompt }] },
                 generationConfig: {
-                    maxOutputTokens: 8192
+                    maxOutputTokens: 8192,
+                    temperature: temperature
                 }
             };
             endpoint = `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}`;
@@ -10358,6 +10742,20 @@ async function getAiReply() {
 
             if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`);
             const data = await response.json();
+            
+            // 捕捉 Gemini 流式聊天中的真实 Token 消耗
+            if (data.usage) {
+                const totalTokens = data.usage.total_tokens || data.usage.totalTokens || 0;
+                if (totalTokens > 0) {
+                    if (!db.tokenUsage) db.tokenUsage = {};
+                    db.tokenUsage.lastUsage = totalTokens;
+                    db.tokenUsage.lastPromptTokens = data.usage.prompt_tokens || data.usage.promptTokens || 0;
+                    db.tokenUsage.lastCompletionTokens = data.usage.completion_tokens || data.usage.completionTokens || 0;
+                    db.tokenUsage.lastTimestamp = Date.now();
+                    console.log(`📊 Token 使用统计 (Gemini): 总计 ${totalTokens} (输入: ${db.tokenUsage.lastPromptTokens}, 输出: ${db.tokenUsage.lastCompletionTokens})`);
+                }
+            }
+            
             let aiText = "";
             if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
                 aiText = data.candidates[0].content.parts[0].text;
@@ -10374,11 +10772,17 @@ async function getAiReply() {
                 { role: 'system', content: systemPrompt },
                 ...processedHistory
             ];
+            // 获取主聊天温度设置，默认值 1.0
+            const temperature = (db.apiSettings && typeof db.apiSettings.chatTemperature !== 'undefined') 
+                ? db.apiSettings.chatTemperature 
+                : 1.0;
+            
             requestBody = {
                 model: model,
                 messages: messages,
                 stream: true,
-                max_tokens: 8192
+                max_tokens: 8192,
+                temperature: temperature
             };
             endpoint = `${url}/v1/chat/completions`;
             headers = {
@@ -10626,6 +11030,7 @@ async function processStream(response, chat, apiType) {
     let fullResponse = "";
     let accumulatedChunk = "";
     let callActionReceived = false;
+    let lastUsageData = null; // 用于保存最后一个包含 usage 的数据块
 
     // 1. 读取流数据
     for (;;) {
@@ -10653,8 +11058,26 @@ async function processStream(response, chat, apiType) {
                             jsonData.choices[0].delta && jsonData.choices[0].delta.content) || "";
                     }
                     fullResponse += textChunk;
+                    
+                    // 捕捉 usage 数据（流式响应中通常在最后一个数据块）
+                    if (jsonData.usage) {
+                        lastUsageData = jsonData.usage;
+                    }
                 } catch (e) { }
             }
+        }
+    }
+    
+    // 捕捉流式响应的真实 Token 消耗
+    if (lastUsageData) {
+        const totalTokens = lastUsageData.total_tokens || lastUsageData.totalTokens || 0;
+        if (totalTokens > 0) {
+            if (!db.tokenUsage) db.tokenUsage = {};
+            db.tokenUsage.lastUsage = totalTokens;
+            db.tokenUsage.lastPromptTokens = lastUsageData.prompt_tokens || lastUsageData.promptTokens || 0;
+            db.tokenUsage.lastCompletionTokens = lastUsageData.completion_tokens || lastUsageData.completionTokens || 0;
+            db.tokenUsage.lastTimestamp = Date.now();
+            console.log(`📊 Token 使用统计 (流式): 总计 ${totalTokens} (输入: ${db.tokenUsage.lastPromptTokens}, 输出: ${db.tokenUsage.lastCompletionTokens})`);
         }
     }
 
@@ -11784,9 +12207,15 @@ async function processStream(response, chat, apiType) {
             
             // 获取角色绑定的分组
             let allowedGroups = [];
-            if (character.stickerGroups && typeof character.stickerGroups === 'string') {
-                allowedGroups = character.stickerGroups.split(',').map(g => g.trim()).filter(Boolean);
+            // 严格区分 undefined/null（未配置）和 ''（已配置但为空）
+            if (character.stickerGroups !== undefined && character.stickerGroups !== null) {
+                // 已配置过（包括空字符串 ''）
+                if (typeof character.stickerGroups === 'string' && character.stickerGroups.trim() !== '') {
+                    allowedGroups = character.stickerGroups.split(',').map(g => g.trim()).filter(Boolean);
+                }
+                // 如果 character.stickerGroups === ''，allowedGroups 保持为 []（已禁用）
             }
+            // 如果 character.stickerGroups 是 undefined 或 null，allowedGroups 保持为 []（未配置，禁用）
             
             // 如果没有绑定任何分组（留空或旧角色），返回空数组（禁用表情包）
             if (allowedGroups.length === 0) {
@@ -12973,15 +13402,27 @@ function loadSettingsToSidebar() {
         };
         // 🆕 渲染表情包分组选择器
         let selectedGroups = [];
-        if (e.stickerGroups && typeof e.stickerGroups === 'string') {
-            selectedGroups = e.stickerGroups.split(',').map(g => g.trim()).filter(Boolean);
-        }
-        // 兼容旧版：如果有 shareStickers=true 但没有 stickerGroups，默认选中所有分组
-        else if (e.shareStickers === true) {
-            const allGroups = getAllStickerGroups();
-            const hasUngrouped = db.myStickers.some(s => !s.group || s.group.trim() === '');
-            if (hasUngrouped) allGroups.unshift('未分类');
-            selectedGroups = allGroups;
+        // 严格区分 undefined/null（未配置）和 ''（已配置但为空）
+        if (e.stickerGroups !== undefined && e.stickerGroups !== null) {
+            // 已配置过（包括空字符串 ''）
+            if (typeof e.stickerGroups === 'string') {
+                // 如果是空字符串，selectedGroups 保持为 []
+                // 如果是非空字符串，解析为数组
+                if (e.stickerGroups.trim() !== '') {
+                    selectedGroups = e.stickerGroups.split(',').map(g => g.trim()).filter(Boolean);
+                }
+                // 如果 e.stickerGroups === ''，selectedGroups 保持为 []（已禁用）
+            }
+        } else {
+            // 未配置（undefined 或 null）：兼容旧版逻辑
+            // 如果有 shareStickers=true，默认选中所有分组
+            if (e.shareStickers === true) {
+                const allGroups = getAllStickerGroups();
+                const hasUngrouped = db.myStickers.some(s => !s.group || s.group.trim() === '');
+                if (hasUngrouped) allGroups.unshift('未分类');
+                selectedGroups = allGroups;
+            }
+            // 如果 shareStickers 也不是 true，selectedGroups 保持为 []（未配置，禁用）
         }
         renderStickerGroupsSelector(selectedGroups);
         
@@ -13032,8 +13473,10 @@ async function saveSettingsFromSidebar() {
         e.isOfflineMode = document.getElementById('setting-offline-mode').checked;
         // 🆕 保存表情包分组绑定
         const selectedGroups = getSelectedStickerGroups();
-        e.stickerGroups = selectedGroups.join(',');
-        console.log(`✅ [角色设置] 保存表情包分组绑定: [${e.stickerGroups}]`);
+        // 如果为空数组，保存空字符串；否则保存逗号分隔的字符串
+        // 注意：空字符串 '' 需要被明确保存，以区分"未配置"（undefined/null）和"已配置但为空"（''）
+        e.stickerGroups = selectedGroups.length > 0 ? selectedGroups.join(',') : '';
+        console.log(`✅ [角色设置] 保存表情包分组绑定: [${e.stickerGroups || '(空，已禁用)'}]`);
         e.aiProactiveChatEnabled = document.getElementById('private-ai-proactive-chat-toggle').checked;
         e.aiProactiveChatDelay = parseInt(document.getElementById('private-ai-proactive-chat-delay').value, 10) || 0;
         e.aiProactiveChatInterval = parseInt(document.getElementById('private-ai-proactive-chat-interval').value, 10) || 0;
@@ -13165,6 +13608,104 @@ function setupApiSettingsApp() {
     const aiBlockDurationEl = document.getElementById('ai-block-duration');
     if (aiBlockDurationEl) aiBlockDurationEl.value = db.apiSettings?.aiBlockDuration || '';
     
+    // 添加滑块自定义样式（通用样式，适用于所有温度滑块）
+    const style = document.createElement('style');
+    style.textContent = `
+        #chat-temperature-slider::-webkit-slider-thumb,
+        #functional-temperature-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4c9ffe;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            border: 2px solid #fff;
+        }
+        #chat-temperature-slider::-moz-range-thumb,
+        #functional-temperature-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4c9ffe;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            border: 2px solid #fff;
+        }
+        #chat-temperature-slider::-webkit-slider-runnable-track,
+        #functional-temperature-slider::-webkit-slider-runnable-track {
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, #4c9ffe 0%, #4c9ffe var(--slider-progress, 50%), #e0e0e0 var(--slider-progress, 50%), #e0e0e0 100%);
+        }
+        #chat-temperature-slider::-moz-range-track,
+        #functional-temperature-slider::-moz-range-track {
+            height: 8px;
+            border-radius: 4px;
+            background: #e0e0e0;
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // 加载主聊天温度设置
+    const chatTemperatureSlider = document.getElementById('chat-temperature-slider');
+    const chatTemperatureValue = document.getElementById('chat-temperature-value');
+    if (chatTemperatureSlider && chatTemperatureValue) {
+        const tempValue = (db.apiSettings && typeof db.apiSettings.chatTemperature !== 'undefined') 
+            ? db.apiSettings.chatTemperature 
+            : 1.0;
+        chatTemperatureSlider.value = tempValue;
+        chatTemperatureValue.textContent = tempValue.toFixed(1);
+        
+        // 更新滑块进度条颜色
+        const updateChatSliderProgress = () => {
+            const value = parseFloat(chatTemperatureSlider.value);
+            const percentage = (value / 2) * 100;
+            chatTemperatureSlider.style.setProperty('--slider-progress', percentage + '%');
+        };
+        updateChatSliderProgress();
+        
+        // 添加滑块事件监听
+        chatTemperatureSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            chatTemperatureValue.textContent = value.toFixed(1);
+            updateChatSliderProgress();
+            // 实时保存到 db
+            if (!db.apiSettings) db.apiSettings = {};
+            db.apiSettings.chatTemperature = value;
+        });
+    }
+    
+    // 加载功能模型温度设置
+    const functionalTemperatureSlider = document.getElementById('functional-temperature-slider');
+    const functionalTemperatureValue = document.getElementById('functional-temperature-value');
+    if (functionalTemperatureSlider && functionalTemperatureValue) {
+        const tempValue = (db.functionalApiSettings && typeof db.functionalApiSettings.functionalTemperature !== 'undefined') 
+            ? db.functionalApiSettings.functionalTemperature 
+            : 1.0;
+        functionalTemperatureSlider.value = tempValue;
+        functionalTemperatureValue.textContent = tempValue.toFixed(1);
+        
+        // 更新滑块进度条颜色
+        const updateFunctionalSliderProgress = () => {
+            const value = parseFloat(functionalTemperatureSlider.value);
+            const percentage = (value / 2) * 100;
+            functionalTemperatureSlider.style.setProperty('--slider-progress', percentage + '%');
+        };
+        updateFunctionalSliderProgress();
+        
+        // 添加滑块事件监听
+        functionalTemperatureSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            functionalTemperatureValue.textContent = value.toFixed(1);
+            updateFunctionalSliderProgress();
+            // 实时保存到 db
+            if (!db.functionalApiSettings) db.functionalApiSettings = {};
+            db.functionalApiSettings.functionalTemperature = value;
+        });
+    }
+    
     // ===== 加载 Minimax TTS 配置 =====
     if (document.getElementById('minimax-group-id')) {
         document.getElementById('minimax-group-id').value = db.apiSettings?.minimaxGroupId || '';
@@ -13288,6 +13829,12 @@ function setupApiSettingsApp() {
             return;
         }
         
+        // 获取温度值
+        const chatTemperatureSlider = document.getElementById('chat-temperature-slider');
+        const functionalTemperatureSlider = document.getElementById('functional-temperature-slider');
+        const chatTemperature = chatTemperatureSlider ? parseFloat(chatTemperatureSlider.value) : 1.0;
+        const functionalTemperature = functionalTemperatureSlider ? parseFloat(functionalTemperatureSlider.value) : 1.0;
+        
         // 保存主聊天模型设置
         db.apiSettings = {
             provider: mainProvider.value,
@@ -13298,6 +13845,7 @@ function setupApiSettingsApp() {
             aiAutoPostMoment: autoPostMomentCheckbox?.checked || false,
             aiBlockDuration: aiBlockDurationEl?.value || 0,
             timePerceptionEnabled: timePerceptionCheckbox?.checked || false,
+            chatTemperature: chatTemperature,
             minimaxGroupId: document.getElementById('minimax-group-id')?.value.trim() || '',
             minimaxApiKey: document.getElementById('minimax-api-key')?.value.trim() || '',
             minimaxModel: document.getElementById('minimax-model-select')?.value || 'speech-01',
@@ -13309,7 +13857,8 @@ function setupApiSettingsApp() {
             provider: funcProvider.value,
             url: funcUrl.value,
             key: funcKey.value,
-            model: funcModel.value
+            model: funcModel.value,
+            functionalTemperature: functionalTemperature
         };
         
         // 同时更新全局变量 ttsConfig
@@ -13465,12 +14014,7 @@ function setupApiSettingsApp() {
 // 用于生成日记的 AI 调用函数
 // START: 终极修复版 V3 (强制通用格式，解决空指令问题)
 async function generateDiaryEntry(characterId, isManual = false) {
-    console.log('🚀 [调试] 进入 generateDiaryEntry 函数，ID:', characterId, '是否手动:', isManual, '当前 isGenerating 状态:', isGenerating);
-    
-    if (isGenerating) {
-        console.warn('⚠️ [日记阻断] 正在生成中，本次请求被拦截');
-        return;
-    }
+    console.log('🚀 [调试] 进入 generateDiaryEntry 函数，ID:', characterId, '是否手动:', isManual);
     
     const character = db.characters.find(c => c.id === characterId);
     if (!character) {
@@ -13491,7 +14035,6 @@ async function generateDiaryEntry(characterId, isManual = false) {
 
     if (isManual) showToast('正在请求AI撰写日记...');
 
-    isGenerating = true;
     const typingIndicator = document.getElementById('typing-indicator');
     if (typingIndicator) {
         typingIndicator.textContent = `${character.remarkName} 正在回忆今天发生的事...`;
@@ -13579,7 +14122,6 @@ ${historyScript}
         console.error('日记生成失败:', error);
         if (isManual) showToast(`出错啦: ${error.message}`);
     } finally {
-        isGenerating = false;
         if (typingIndicator) {
             typingIndicator.textContent = '';
             typingIndicator.style.display = 'none';
@@ -13934,6 +14476,21 @@ function setupDiarySystem() {
              diaryActionSheet.classList.add('visible');
         });
     });
+    
+    // Token 统计弹窗关闭按钮
+    const tokenStatsCloseBtn = document.getElementById('token-stats-close-btn');
+    const tokenStatsModal = document.getElementById('token-stats-modal');
+    if (tokenStatsCloseBtn) {
+        tokenStatsCloseBtn.addEventListener('click', closeTokenStatsModal);
+    }
+    if (tokenStatsModal) {
+        // 点击背景关闭弹窗
+        tokenStatsModal.addEventListener('click', (e) => {
+            if (e.target === tokenStatsModal) {
+                closeTokenStatsModal();
+            }
+        });
+    }
     
     // 面板按钮
     openAiDiaryBtn.addEventListener('click', () => { currentAiDiaryPage = 1; renderAiDiaries(); switchScreen('diary-screen'); diaryActionSheet.classList.remove('visible'); });
@@ -17786,7 +18343,10 @@ async function importCurrentChat(file) {
         if (importedData.relationship !== undefined) character.relationship = importedData.relationship;
         if (importedData.stickerGroups !== undefined) character.stickerGroups = importedData.stickerGroups; // 🆕 表情包分组绑定
         // 兼容旧格式：如果导入的是旧版本的 shareStickers
-        if (importedData.shareStickers === true && !character.stickerGroups) {
+        // 严格区分 undefined/null（未配置）和 ''（已配置但为空）
+        if (importedData.shareStickers === true && (character.stickerGroups === undefined || character.stickerGroups === null)) {
+            // 只有当 stickerGroups 是 undefined 或 null 时，才进行兼容处理
+            // 如果它是 ''（空字符串），说明用户已经明确清空了，不要动它
             const allGroups = getAllStickerGroups();
             const hasUngrouped = db.myStickers.some(s => !s.group || s.group.trim() === '');
             if (hasUngrouped) allGroups.unshift('未分类');
@@ -21189,20 +21749,27 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
 
       const left = document.createElement('div');
       left.style.flex = '1';
-      left.style.minWidth = '0';
-      left.innerHTML = '<div style="font-weight:600;">'+p.name+'</div><div style="font-size:12px;color:#666;margin-top:4px;">' + (p.data && p.data.provider ? ('提供者：'+p.data.provider) : '') + '</div>';
+      left.style.minWidth = '120px'; // 确保预设名称有足够显示空间
+      left.style.marginRight = '12px'; // 与按钮组保持间距
+      left.style.overflow = 'hidden'; // 防止内容溢出
+      left.innerHTML = '<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+p.name+'</div><div style="font-size:12px;color:#666;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (p.data && p.data.provider ? ('提供者：'+p.data.provider) : '') + '</div>';
 
       const btns = document.createElement('div');
-      btns.style.display = 'flex';
+      btns.style.display = 'grid';
+      btns.style.gridTemplateColumns = 'repeat(2, auto)'; // 2列网格布局
       btns.style.gap = '6px';
-      btns.style.flexWrap = 'wrap'; // 允许按钮换行
+      btns.style.alignItems = 'center';
+      btns.style.flexShrink = '0'; // 防止按钮组被压缩
 
       // 修改：将单个"应用"按钮改为两个按钮
       const applyMainBtn = document.createElement('button');
       applyMainBtn.className = 'btn btn-primary';
       applyMainBtn.textContent = '应用为主模型';
       applyMainBtn.style.fontSize = '12px';
-      applyMainBtn.style.padding = '4px 8px';
+      applyMainBtn.style.padding = '6px 10px';
+      applyMainBtn.style.width = 'auto'; // 宽度自适应内容
+      applyMainBtn.style.minWidth = 'fit-content';
+      applyMainBtn.style.whiteSpace = 'nowrap';
       applyMainBtn.dataset.presetName = p.name;
       applyMainBtn.onclick = function(){ applyApiPresetToMain(p.name); };
 
@@ -21210,7 +21777,10 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
       applyFuncBtn.className = 'btn btn-secondary';
       applyFuncBtn.textContent = '应用为功能模型';
       applyFuncBtn.style.fontSize = '12px';
-      applyFuncBtn.style.padding = '4px 8px';
+      applyFuncBtn.style.padding = '6px 10px';
+      applyFuncBtn.style.width = 'auto'; // 宽度自适应内容
+      applyFuncBtn.style.minWidth = 'fit-content';
+      applyFuncBtn.style.whiteSpace = 'nowrap';
       applyFuncBtn.dataset.presetName = p.name;
       applyFuncBtn.onclick = function(){ applyApiPresetToFunc(p.name); };
 
@@ -21218,7 +21788,10 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
       renameBtn.className = 'btn';
       renameBtn.textContent = '重命名';
       renameBtn.style.fontSize = '12px';
-      renameBtn.style.padding = '4px 8px';
+      renameBtn.style.padding = '6px 10px';
+      renameBtn.style.width = 'auto'; // 宽度自适应内容
+      renameBtn.style.minWidth = 'fit-content';
+      renameBtn.style.whiteSpace = 'nowrap';
       renameBtn.onclick = function(){
         const newName = prompt('输入新名称：', p.name);
         if (!newName) return;
@@ -21233,7 +21806,10 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
       delBtn.className = 'btn';
       delBtn.textContent = '删除';
       delBtn.style.fontSize = '12px';
-      delBtn.style.padding = '4px 8px';
+      delBtn.style.padding = '6px 10px';
+      delBtn.style.width = 'auto'; // 宽度自适应内容
+      delBtn.style.minWidth = 'fit-content';
+      delBtn.style.whiteSpace = 'nowrap';
       delBtn.onclick = function(){ if(!confirm('确定删除 "'+p.name+'" ?')) return; const all=_getApiPresets(); all.splice(idx,1); _saveApiPresets(all); openApiManageModal(); populateApiSelect(); };
 
       btns.appendChild(applyMainBtn);
@@ -23563,6 +24139,13 @@ fileInput.addEventListener('change', async (e)=>{
 
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 初始化 Token 统计按钮（延迟执行，确保 DOM 已加载）
+    setTimeout(() => {
+        if (typeof updateTokenStatsButton === 'function') {
+            updateTokenStatsButton();
+        }
+    }, 500);
+    
     // 修复：为聊天室的返回按钮增加特殊处理，以确保底部导航栏能正确显示
     const chatRoomBackBtn = document.querySelector('#chat-room-screen .back-btn');
     if (chatRoomBackBtn) {

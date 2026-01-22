@@ -163,6 +163,9 @@
     <button class="sticker-bar-btn" id="location-btn">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12C20,15.08 18.05,17.78 15.42,19.23L12,14.5L8.58,19.23C5.95,17.78 4,15.08 4,12A8,8 0 0,1 12,4M12,6.5A5.5,5.5 0 0,0 6.5,12A5.5,5.5 0 0,0 12,17.5A5.5,5.5 0 0,0 17.5,12A5.5,5.5 0 0,0 12,6.5Z"></path></svg>
     </button>
+    <button class="sticker-bar-btn" id="token-stats-btn" title="Token 统计" onclick="openTokenStatsModal()">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M19,19H5V5H19V19Z M7,10H9V17H7V10M11,7H13V17H11V7M15,13H17V17H15V13Z"></path></svg>
+    </button>
 </div>
     <!-- ▼▼▼ 将新的微信输入栏粘贴到这里 ▼▼▼ -->
 <div class="message-input-area" id="wechat-input-area" style="display: none;">
@@ -194,6 +197,7 @@
             <div class="function-item" data-action="rollback"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z"></path></svg></div><span>重Roll</span></div>
     <div class="function-item" data-action="continue-writing"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12A2,2 0 0,1 6,10M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12A2,2 0 0,1 18,10Z"></path></svg></div><span>续写</span></div>
     <div class="function-item" data-action="diary"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M14 17H7V15H14V17M17 13H7V11H17V13M17 9H7V7H17V9Z"></path></svg></div><span>日记</span></div>
+    <div class="function-item" data-action="token-stats"><div class="icon-bg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17Z"/></svg></div><span id="token-stats-label">Token</span></div>
 </div>
 </div>
 <!-- ▲▲▲ 替换结束 ▲▲▲ -->
@@ -3456,6 +3460,57 @@
         <div id="font-presets-list" style="max-height:340px; overflow:auto; margin-bottom:12px;"></div>
         <div style="display:flex; gap:8px; justify-content:flex-end;">
             <button id="font-close-modal" class="btn btn-primary" style="padding:8px 12px;">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- Token 统计弹窗 -->
+<div id="token-stats-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-window" style="max-width:520px;">
+        <h3 style="margin:0 0 15px 0;">当前 Token 统计</h3>
+        <div style="max-height:60vh; overflow-y:auto; margin-bottom:15px;">
+            <!-- 分组 A: 静态估算 -->
+            <div style="margin-bottom:20px; padding:15px; background:#f9f9f9; border-radius:8px;">
+                <h4 style="margin:0 0 12px 0; font-size:14px; color:#666; font-weight:600;">📊 静态估算 (当前上下文)</h4>
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #eee;">
+                    <span style="color:#333;">人设 (System):</span>
+                    <span id="token-stats-system" style="font-weight:600; color:#4c9ffe;">0</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #eee;">
+                    <span style="color:#333;">世界书 (World Info):</span>
+                    <span id="token-stats-worldinfo" style="font-weight:600; color:#4c9ffe;">0</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #eee;">
+                    <span style="color:#333;">上下文 (History):</span>
+                    <span id="token-stats-history" style="font-weight:600; color:#4c9ffe;">0</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0;">
+                    <span style="color:#333;">表情包 (Stickers):</span>
+                    <span id="token-stats-stickers" style="font-weight:600; color:#4c9ffe;">0</span>
+                </div>
+            </div>
+            
+            <!-- 分组 B: 统计数据 -->
+            <div style="margin-bottom:20px; padding:15px; background:#fff8f0; border-radius:8px;">
+                <h4 style="margin:0 0 12px 0; font-size:14px; color:#666; font-weight:600;">📈 统计数据</h4>
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #eee;">
+                    <span style="color:#333;">当前历史消息条数:</span>
+                    <span id="token-stats-message-count" style="font-weight:600; color:#ff9800;">0</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0;">
+                    <span style="color:#333;">上次 API 真实消耗:</span>
+                    <span id="token-stats-last-usage" style="font-weight:600; color:#ff9800;">-</span>
+                </div>
+            </div>
+            
+            <!-- 总计估算 -->
+            <div style="padding:15px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; text-align:center;">
+                <div style="color:#fff; font-size:12px; margin-bottom:8px; opacity:0.9;">总计估算</div>
+                <div id="token-stats-total" style="color:#fff; font-size:32px; font-weight:700;">0</div>
+            </div>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button id="token-stats-close-btn" class="btn btn-primary" style="padding:8px 12px;">关闭</button>
         </div>
     </div>
 </div>
