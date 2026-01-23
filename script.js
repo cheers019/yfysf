@@ -13276,53 +13276,163 @@ function setupChatSettings() {
         const character = db.characters.find(c => c.id === currentChatId);
         if (!character) return;
         worldBookSelectionList.innerHTML = '';
+        
+        // 1. 按分类分组世界书
+        const groups = {};
+        (db.worldBooks || []).forEach(book => {
+            const categoryId = book.categoryId || 'uncategorized';
+            if (!groups[categoryId]) {
+                groups[categoryId] = [];
+            }
+            groups[categoryId].push(book);
+        });
+        
+        // 2. 渲染分类列表（带折叠功能）
         (db.worldBookCategories || []).forEach(category => {
-            const booksInCategory = db.worldBooks.filter(b => b.categoryId === category.id);
+            const booksInCategory = groups[category.id] || [];
             if (booksInCategory.length === 0) return;
-            const allInCategorySelected = booksInCategory.every(book => (character.worldBookIds || []).includes(book.id));
-            const li = document.createElement('li');
-            li.className = 'world-book-select-item';
-            li.innerHTML = ` <input type="checkbox" id="wb-cat-select-${category.id}" data-category-id="${category.id}" ${allInCategorySelected ? 'checked' : ''}>
-<label for="wb-cat-select-${category.id}"><strong>[ 分 类 ] ${category.name}
-(${booksInCategory.length}条)</strong></label>
-`;
-            worldBookSelectionList.appendChild(li);
+            
+            const selectedIds = character.worldBookIds || [];
+            const allInCategorySelected = booksInCategory.every(book => selectedIds.includes(book.id));
+            const someInCategorySelected = booksInCategory.some(book => selectedIds.includes(book.id));
+            
+            // 分类头（可展开/折叠）
+            const categoryHeader = document.createElement('li');
+            categoryHeader.className = 'world-book-category-header';
+            categoryHeader.innerHTML = `
+                <div class="world-book-category-title" data-category-id="${category.id}" style="display: flex; align-items: center; gap: 8px; padding: 10px; cursor: pointer; user-select: none; background: #f5f5f5; border-radius: 6px; margin-bottom: 5px;">
+                    <svg class="world-book-category-arrow" data-category-id="${category.id}" viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; transition: transform 0.3s; transform: rotate(0deg);">
+                        <path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
+                    </svg>
+                    <input type="checkbox" id="wb-cat-select-${category.id}" data-category-id="${category.id}" class="world-book-category-checkbox" ${allInCategorySelected ? 'checked' : ''} ${someInCategorySelected && !allInCategorySelected ? 'indeterminate' : ''}>
+                    <label for="wb-cat-select-${category.id}" style="flex: 1; cursor: pointer; font-weight: 600;">
+                        [ 分 类 ] ${category.name} (${booksInCategory.length}条)
+                    </label>
+                </div>
+            `;
+            worldBookSelectionList.appendChild(categoryHeader);
+            
+            // 条目列表（默认折叠）
+            const itemsContainer = document.createElement('li');
+            itemsContainer.className = 'world-book-category-items';
+            itemsContainer.setAttribute('data-category-id', category.id);
+            itemsContainer.style.display = 'none';
+            itemsContainer.style.paddingLeft = '30px';
+            itemsContainer.style.marginBottom = '10px';
+            
+            booksInCategory.forEach(book => {
+                const isChecked = selectedIds.includes(book.id);
+                const itemLi = document.createElement('div');
+                itemLi.className = 'world-book-select-item';
+                itemLi.style.padding = '6px 0';
+                const bookNamePreview = book.name || (book.content ? book.content.substring(0, 30) + '...' : '未命名条目');
+                itemLi.innerHTML = `
+                    <input type="checkbox" id="wb-select-${book.id}" value="${book.id}" class="world-book-item-checkbox" data-category-id="${category.id}" ${isChecked ? 'checked' : ''}>
+                    <label for="wb-select-${book.id}" style="cursor: pointer;">${bookNamePreview}</label>
+                `;
+                itemsContainer.appendChild(itemLi);
+            });
+            
+            worldBookSelectionList.appendChild(itemsContainer);
+            
+            // 绑定展开/折叠事件
+            const categoryTitle = categoryHeader.querySelector('.world-book-category-title');
+            const arrow = categoryHeader.querySelector('.world-book-category-arrow');
+            const categoryCheckbox = categoryHeader.querySelector(`#wb-cat-select-${category.id}`);
+            const categoryLabel = categoryHeader.querySelector(`label[for="wb-cat-select-${category.id}"]`);
+            
+            // 阻止 checkbox 和 label 的点击事件冒泡
+            if (categoryCheckbox) {
+                categoryCheckbox.addEventListener('click', (e) => e.stopPropagation());
+            }
+            if (categoryLabel) {
+                categoryLabel.addEventListener('click', (e) => e.stopPropagation());
+            }
+            
+            categoryTitle.addEventListener('click', (e) => {
+                // 如果点击的是 checkbox 或 label，不触发展开/折叠
+                if (e.target === categoryCheckbox || e.target === categoryLabel || e.target.closest('input') || e.target.closest('label')) {
+                    return;
+                }
+                const isExpanded = itemsContainer.style.display !== 'none';
+                itemsContainer.style.display = isExpanded ? 'none' : 'block';
+                arrow.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(90deg)';
+            });
+            
+            // 绑定分类全选/反选事件
+            categoryCheckbox.addEventListener('change', (e) => {
+                const isChecked = e.target.checked;
+                itemsContainer.querySelectorAll(`.world-book-item-checkbox[data-category-id="${category.id}"]`).forEach(itemCheckbox => {
+                    itemCheckbox.checked = isChecked;
+                });
+                updateCategoryCheckboxState(category.id);
+            });
+            
+            // 绑定条目选择事件（更新分类复选框状态）
+            itemsContainer.querySelectorAll(`.world-book-item-checkbox[data-category-id="${category.id}"]`).forEach(itemCheckbox => {
+                itemCheckbox.addEventListener('change', () => {
+                    updateCategoryCheckboxState(category.id);
+                });
+            });
         });
 
-        const uncategorizedBooks = db.worldBooks.filter(b => b.categoryId === 'uncategorized');
+        // 3. 渲染未分类条目
+        const uncategorizedBooks = groups['uncategorized'] || [];
         if (uncategorizedBooks.length > 0) {
             const separator = document.createElement('li');
-            separator.innerHTML = `<h4 style="margin: 15px 0 5px; color: #888;"> 未 分 类 条 目 </h4>`;
+            separator.innerHTML = `<h4 style="margin: 15px 0 5px; color: #888;">未分类条目</h4>`;
             worldBookSelectionList.appendChild(separator);
+            
+            const selectedIds = character.worldBookIds || [];
             uncategorizedBooks.forEach(book => {
-                const isChecked = (character.worldBookIds || []).includes(book.id);
+                const isChecked = selectedIds.includes(book.id);
                 const li = document.createElement('li');
                 li.className = 'world-book-select-item';
-                li.innerHTML = ` <input type="checkbox" id="wb-select-${book.id}" value="${book.id}" ${isChecked ? 'checked' : ''}>
-<label for="wb-select-${book.id}">${book.name}</label>
-`;
+                li.style.paddingLeft = '20px';
+                const bookNamePreview = book.name || (book.content ? book.content.substring(0, 30) + '...' : '未命名条目');
+                li.innerHTML = `
+                    <input type="checkbox" id="wb-select-${book.id}" value="${book.id}" class="world-book-item-checkbox" ${isChecked ? 'checked' : ''}>
+                    <label for="wb-select-${book.id}" style="cursor: pointer;">${bookNamePreview}</label>
+                `;
                 worldBookSelectionList.appendChild(li);
             });
         }
+        
+        // 辅助函数：更新分类复选框状态
+        function updateCategoryCheckboxState(categoryId) {
+            const categoryCheckbox = document.getElementById(`wb-cat-select-${categoryId}`);
+            if (!categoryCheckbox) return;
+            const itemsContainer = worldBookSelectionList.querySelector(`.world-book-category-items[data-category-id="${categoryId}"]`);
+            if (!itemsContainer) return;
+            const itemCheckboxes = itemsContainer.querySelectorAll(`.world-book-item-checkbox[data-category-id="${categoryId}"]`);
+            const checkedCount = Array.from(itemCheckboxes).filter(cb => cb.checked).length;
+            const totalCount = itemCheckboxes.length;
+            
+            if (checkedCount === 0) {
+                categoryCheckbox.checked = false;
+                categoryCheckbox.indeterminate = false;
+            } else if (checkedCount === totalCount) {
+                categoryCheckbox.checked = true;
+                categoryCheckbox.indeterminate = false;
+            } else {
+                categoryCheckbox.checked = false;
+                categoryCheckbox.indeterminate = true;
+            }
+        }
+        
         worldBookSelectionModal.classList.add('visible');
     });
 
     saveWorldBookSelectionBtn.addEventListener('click', async () => {
-        const selectedIds = new Set();
-        worldBookSelectionList.querySelectorAll('input[data-category-id]:checked').forEach(checkbox => {
-            const categoryId = checkbox.dataset.categoryId;
-            db.worldBooks.forEach(book => {
-                if (book.categoryId === categoryId) {
-                    selectedIds.add(book.id);
-                }
-            });
-        });
-        worldBookSelectionList.querySelectorAll('input[value]:checked').forEach(checkbox => {
-            if (!checkbox.dataset.categoryId) {
-                selectedIds.add(checkbox.value);
+        // 收集所有被勾选的具体条目（不再按分类收集）
+        const selectedIds = [];
+        worldBookSelectionList.querySelectorAll('.world-book-item-checkbox:checked').forEach(checkbox => {
+            if (checkbox.value) {
+                selectedIds.push(checkbox.value);
             }
         });
-        const finalSelectedIds = Array.from(selectedIds);
+        
+        const finalSelectedIds = selectedIds;
         if (currentChatType === 'private') {
             const character = db.characters.find(c => c.id === currentChatId);
             if (character) character.worldBookIds = finalSelectedIds;
@@ -14057,13 +14167,52 @@ async function generateDiaryEntry(characterId, isManual = false) {
             return `${sender}: "${cleanContent}"`;
         }).join('\n');
         
-        // 3. 构建提示词
+        // 3. 获取世界书内容
+        let worldInfoScript = '';
+        let triggeredWorldBooks = [];
+        if (character.worldBookIds && Array.isArray(character.worldBookIds) && db.worldBooks) {
+            // 将 historyScript 作为搜索内容（检查整个对话历史是否触发关键词）
+            const searchContent = historyScript.toLowerCase(); // 统一转为小写进行匹配
+            
+            triggeredWorldBooks = character.worldBookIds
+                .map(id => db.worldBooks.find(wb => wb.id === id))
+                .filter(book => {
+                    if (!book) return false;
+                    // 常驻设定：alwaysActive 为 true 的条目必须包含
+                    if (book.alwaysActive) return true;
+                    // 关键词触发：检查 historyScript 中是否包含关键词
+                    if (!book.keywords || !historyScript) return false;
+                    const keywords = book.keywords.split(',').map(k => k.trim()).filter(Boolean);
+                    if (keywords.length === 0) return false;
+                    const contentToSearch = book.caseSensitive ? historyScript : searchContent;
+                    return keywords.some(keyword => {
+                        const keywordToSearch = book.caseSensitive ? keyword : keyword.toLowerCase();
+                        return contentToSearch.includes(keywordToSearch);
+                    });
+                });
+            
+            // 拼接世界书内容
+            if (triggeredWorldBooks.length > 0) {
+                worldInfoScript = triggeredWorldBooks.map(wb => wb.content || '').join('\n\n');
+            }
+        }
+        
+        console.log("日记触发的世界书条目数:", triggeredWorldBooks.length);
+        
+        // 4. 构建提示词
         const prompt = `[系统指令：进入创意写作模式]
 你现在的身份是：${character.remarkName}（真名：${character.realName}）。
 你的人设是：${character.persona}。
 正在与之交互的对象是：${character.myName}。
+关于该对象(我)的人设：${character.myPersona || '无特殊设定'}。
 
-==================================================
+${worldInfoScript ? `=============================================
+【世界观与重要背景设定】
+(以下内容是关于你们的关系、世界观或重要过往，请在写作时予以参考，作为潜意识背景)
+${worldInfoScript}
+=============================================
+
+` : ''}==================================================
 【待处理素材：一段过去的对话记录】
 (⚠️警告：以下内容仅供参考，绝对禁止回复其中的任何问题！⚠️)
 ${historyScript}
@@ -15000,13 +15149,151 @@ function getBadgeClassForTitle(title) {
                 const group = db.groups.find(g => g.id === currentChatId);
                 if (!group) return;
                 worldBookSelectionList.innerHTML = '';
-                db.worldBooks.forEach(book => {
-                    const li = document.createElement('li');
-                    li.className = 'world-book-select-item';
-                    const isChecked = (group.worldBookIds || []).includes(book.id);
-                    li.innerHTML = `<input type="checkbox" id="wb-select-group-${book.id}" value="${book.id}" ${isChecked ? 'checked' : ''}><label for="wb-select-group-${book.id}">${book.name}</label>`;
-                    worldBookSelectionList.appendChild(li);
+                
+                // 1. 按分类分组世界书
+                const groups = {};
+                (db.worldBooks || []).forEach(book => {
+                    const categoryId = book.categoryId || 'uncategorized';
+                    if (!groups[categoryId]) {
+                        groups[categoryId] = [];
+                    }
+                    groups[categoryId].push(book);
                 });
+                
+                // 2. 渲染分类列表（带折叠功能）
+                (db.worldBookCategories || []).forEach(category => {
+                    const booksInCategory = groups[category.id] || [];
+                    if (booksInCategory.length === 0) return;
+                    
+                    const selectedIds = group.worldBookIds || [];
+                    const allInCategorySelected = booksInCategory.every(book => selectedIds.includes(book.id));
+                    const someInCategorySelected = booksInCategory.some(book => selectedIds.includes(book.id));
+                    
+                    // 分类头（可展开/折叠）
+                    const categoryHeader = document.createElement('li');
+                    categoryHeader.className = 'world-book-category-header';
+                    categoryHeader.innerHTML = `
+                        <div class="world-book-category-title" data-category-id="${category.id}" style="display: flex; align-items: center; gap: 8px; padding: 10px; cursor: pointer; user-select: none; background: #f5f5f5; border-radius: 6px; margin-bottom: 5px;">
+                            <svg class="world-book-category-arrow" data-category-id="${category.id}" viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; transition: transform 0.3s; transform: rotate(0deg);">
+                                <path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
+                            </svg>
+                            <input type="checkbox" id="wb-cat-select-group-${category.id}" data-category-id="${category.id}" class="world-book-category-checkbox" ${allInCategorySelected ? 'checked' : ''} ${someInCategorySelected && !allInCategorySelected ? 'indeterminate' : ''}>
+                            <label for="wb-cat-select-group-${category.id}" style="flex: 1; cursor: pointer; font-weight: 600;">
+                                [ 分 类 ] ${category.name} (${booksInCategory.length}条)
+                            </label>
+                        </div>
+                    `;
+                    worldBookSelectionList.appendChild(categoryHeader);
+                    
+                    // 条目列表（默认折叠）
+                    const itemsContainer = document.createElement('li');
+                    itemsContainer.className = 'world-book-category-items';
+                    itemsContainer.setAttribute('data-category-id', category.id);
+                    itemsContainer.style.display = 'none';
+                    itemsContainer.style.paddingLeft = '30px';
+                    itemsContainer.style.marginBottom = '10px';
+                    
+                    booksInCategory.forEach(book => {
+                        const isChecked = selectedIds.includes(book.id);
+                        const itemLi = document.createElement('div');
+                        itemLi.className = 'world-book-select-item';
+                        itemLi.style.padding = '6px 0';
+                        const bookNamePreview = book.name || (book.content ? book.content.substring(0, 30) + '...' : '未命名条目');
+                        itemLi.innerHTML = `
+                            <input type="checkbox" id="wb-select-group-${book.id}" value="${book.id}" class="world-book-item-checkbox" data-category-id="${category.id}" ${isChecked ? 'checked' : ''}>
+                            <label for="wb-select-group-${book.id}" style="cursor: pointer;">${bookNamePreview}</label>
+                        `;
+                        itemsContainer.appendChild(itemLi);
+                    });
+                    
+                    worldBookSelectionList.appendChild(itemsContainer);
+                    
+                    // 绑定展开/折叠事件
+                    const categoryTitle = categoryHeader.querySelector('.world-book-category-title');
+                    const arrow = categoryHeader.querySelector('.world-book-category-arrow');
+                    const categoryCheckbox = categoryHeader.querySelector(`#wb-cat-select-group-${category.id}`);
+                    const categoryLabel = categoryHeader.querySelector(`label[for="wb-cat-select-group-${category.id}"]`);
+                    
+                    // 阻止 checkbox 和 label 的点击事件冒泡
+                    if (categoryCheckbox) {
+                        categoryCheckbox.addEventListener('click', (e) => e.stopPropagation());
+                    }
+                    if (categoryLabel) {
+                        categoryLabel.addEventListener('click', (e) => e.stopPropagation());
+                    }
+                    
+                    categoryTitle.addEventListener('click', (e) => {
+                        // 如果点击的是 checkbox 或 label，不触发展开/折叠
+                        if (e.target === categoryCheckbox || e.target === categoryLabel || e.target.closest('input') || e.target.closest('label')) {
+                            return;
+                        }
+                        const isExpanded = itemsContainer.style.display !== 'none';
+                        itemsContainer.style.display = isExpanded ? 'none' : 'block';
+                        arrow.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(90deg)';
+                    });
+                    
+                    // 绑定分类全选/反选事件
+                    categoryCheckbox.addEventListener('change', (e) => {
+                        const isChecked = e.target.checked;
+                        itemsContainer.querySelectorAll(`.world-book-item-checkbox[data-category-id="${category.id}"]`).forEach(itemCheckbox => {
+                            itemCheckbox.checked = isChecked;
+                        });
+                        updateCategoryCheckboxState(category.id, 'group');
+                    });
+                    
+                    // 绑定条目选择事件（更新分类复选框状态）
+                    itemsContainer.querySelectorAll(`.world-book-item-checkbox[data-category-id="${category.id}"]`).forEach(itemCheckbox => {
+                        itemCheckbox.addEventListener('change', () => {
+                            updateCategoryCheckboxState(category.id, 'group');
+                        });
+                    });
+                });
+
+                // 3. 渲染未分类条目
+                const uncategorizedBooks = groups['uncategorized'] || [];
+                if (uncategorizedBooks.length > 0) {
+                    const separator = document.createElement('li');
+                    separator.innerHTML = `<h4 style="margin: 15px 0 5px; color: #888;">未分类条目</h4>`;
+                    worldBookSelectionList.appendChild(separator);
+                    
+                    const selectedIds = group.worldBookIds || [];
+                    uncategorizedBooks.forEach(book => {
+                        const isChecked = selectedIds.includes(book.id);
+                        const li = document.createElement('li');
+                        li.className = 'world-book-select-item';
+                        li.style.paddingLeft = '20px';
+                        const bookNamePreview = book.name || (book.content ? book.content.substring(0, 30) + '...' : '未命名条目');
+                        li.innerHTML = `
+                            <input type="checkbox" id="wb-select-group-${book.id}" value="${book.id}" class="world-book-item-checkbox" ${isChecked ? 'checked' : ''}>
+                            <label for="wb-select-group-${book.id}" style="cursor: pointer;">${bookNamePreview}</label>
+                        `;
+                        worldBookSelectionList.appendChild(li);
+                    });
+                }
+                
+                // 辅助函数：更新分类复选框状态
+                function updateCategoryCheckboxState(categoryId, prefix = '') {
+                    const checkboxId = prefix ? `wb-cat-select-${prefix}-${categoryId}` : `wb-cat-select-${categoryId}`;
+                    const categoryCheckbox = document.getElementById(checkboxId);
+                    if (!categoryCheckbox) return;
+                    const itemsContainer = worldBookSelectionList.querySelector(`.world-book-category-items[data-category-id="${categoryId}"]`);
+                    if (!itemsContainer) return;
+                    const itemCheckboxes = itemsContainer.querySelectorAll(`.world-book-item-checkbox[data-category-id="${categoryId}"]`);
+                    const checkedCount = Array.from(itemCheckboxes).filter(cb => cb.checked).length;
+                    const totalCount = itemCheckboxes.length;
+                    
+                    if (checkedCount === 0) {
+                        categoryCheckbox.checked = false;
+                        categoryCheckbox.indeterminate = false;
+                    } else if (checkedCount === totalCount) {
+                        categoryCheckbox.checked = true;
+                        categoryCheckbox.indeterminate = false;
+                    } else {
+                        categoryCheckbox.checked = false;
+                        categoryCheckbox.indeterminate = true;
+                    }
+                }
+                
                 worldBookSelectionModal.classList.add('visible');
             });
             // *** 修正结束 ***
