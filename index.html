@@ -109,7 +109,8 @@
             <div class="typing-indicator" id="typing-indicator"></div>
         </main>
         
-        <div class="chat-input-wrapper">
+        <div class="chat-footer">
+        <div class="chat-input-wrapper input-section">
         	<!-- 找到 <div class="chat-input-wrapper"> 在其内部最前面添加 -->
 <div id="quote-reply-bar" style="padding: 8px 12px; background-color: rgba(240, 240, 240, 0.9); border-top: 1px solid #eee; display: none; align-items: center; gap: 8px; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);">
     <div id="quoted-message-preview" style="flex-grow: 1; font-size: 13px; color: #666; border-left: 3px solid var(--primary-color); padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
@@ -121,16 +122,10 @@
         <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z"></path>
         </svg>
-    </button><!-- ... 紧跟在 id="rollback-btn" 的 </button> 之后 ... -->
-<button class="sticker-bar-btn" id="continue-writing-btn" title="续写">
-    <svg viewBox="0 0 24 24" fill="currentColor">
-        <path d="M6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12A2,2 0 0,1 6,10M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12A2,2 0 0,1 18,10Z"></path>
-    </svg>
-</button>
-<!-- ... 后面是 id="sticker-toggle-btn" ... -->
-    <button class="sticker-bar-btn" id="sticker-toggle-btn">
-        <svg viewBox="0 0 24 24">
-            <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"></path>
+    </button>
+    <button class="sticker-bar-btn" id="continue-writing-btn" title="续写">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12A2,2 0 0,1 6,10M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12A2,2 0 0,1 18,10Z"></path>
         </svg>
     </button>
     <button class="sticker-bar-btn" id="photo-video-btn">
@@ -145,23 +140,26 @@
     <button class="sticker-bar-btn" id="voice-call-btn">
         <svg viewBox="0 0 24 24"><path d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z"></path></svg>
     </button>
+    <button class="sticker-bar-btn" id="call-log-entry-btn" title="通话记录">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5,3A9,9 0 1,0 22.5,12H20.5A7,7 0 1,1 13.5,5V8L17.5,4L13.5,0V3M12,8V13L16.28,15.54L17,14.33L13.5,12.25V8H12Z"></path></svg>
+    </button>
+    <button class="sticker-bar-btn" id="diary-btn" style="display: none;">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M14 17H7V15H14V17M17 13H7V11H17V13M17 9H7V7H17V9Z"></path></svg>
+    </button>
     <button class="sticker-bar-btn" id="wallet-btn">
         <svg viewBox="0 0 24 24"><path d="M20 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 18H4V8H20V18ZM4 6H20V6H4Z"></path></svg>
     </button>
     <button class="sticker-bar-btn" id="gift-btn">
         <svg viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6H20M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M12.5,18C12.5,17.29 12.17,16.65 11.64,16.27C12.17,15.89 12.5,15.26 12.5,14.55C12.5,13.6 11.83,12.79 11,12.58V12H13V10H11V8H13V6H11V5C11,4.45 10.55,4 10,4H8C7.45,4 7,4.45 7,5V6H9V8H7V10H9V12H7V12.58C6.17,12.79 5.5,13.6 5.5,14.55C5.5,15.26 5.83,15.89 6.36,16.27C5.83,16.65 5.5,17.29 5.5,18H12.5Z"></path></svg>
     </button>
-    <button class="sticker-bar-btn" id="diary-btn" style="display: none;">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M14 17H7V15H14V17M17 13H7V11H17V13M17 9H7V7H17V9Z"></path></svg>
-    </button>
-    <button class="sticker-bar-btn" id="time-skip-btn">
-        <svg viewBox="0 0 24 24"><path d="M4 5v14l7-7-7-7zm9 0v14l7-7-7-7z"></path></svg>
+    <button class="sticker-bar-btn" id="location-btn">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12C20,15.08 18.05,17.78 15.42,19.23L12,14.5L8.58,19.23C5.95,17.78 4,15.08 4,12A8,8 0 0,1 12,4M12,6.5A5.5,5.5 0 0,0 6.5,12A5.5,5.5 0 0,0 12,17.5A5.5,5.5 0 0,0 17.5,12A5.5,5.5 0 0,0 12,6.5Z"></path></svg>
     </button>
     <button class="sticker-bar-btn" id="file-btn">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"></path></svg>
     </button>
-    <button class="sticker-bar-btn" id="location-btn">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12C20,15.08 18.05,17.78 15.42,19.23L12,14.5L8.58,19.23C5.95,17.78 4,15.08 4,12A8,8 0 0,1 12,4M12,6.5A5.5,5.5 0 0,0 6.5,12A5.5,5.5 0 0,0 12,17.5A5.5,5.5 0 0,0 17.5,12A5.5,5.5 0 0,0 12,6.5Z"></path></svg>
+    <button class="sticker-bar-btn" id="time-skip-btn">
+        <svg viewBox="0 0 24 24"><path d="M4 5v14l7-7-7-7zm9 0v14l7-7-7-7z"></path></svg>
     </button>
     <button class="sticker-bar-btn" id="token-stats-btn" title="Token 统计" onclick="openTokenStatsModal()">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M19,19H5V5H19V19Z M7,10H9V17H7V10M11,7H13V17H11V7M15,13H17V17H15V13Z"></path></svg>
@@ -173,42 +171,32 @@
         <svg viewBox="0 0 24 24" fill="currentColor" style="width: 28px; height: 28px;"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"></path></svg>
     </button>
     <input type="text" id="wechat-message-input" placeholder="输入消息...">
-    <div class="wechat-send-btn-group" style="display: flex; gap: 8px;">
-        <button id="wechat-send-message-btn" class="icon-btn send-btn">➤</button>
-        <button id="wechat-get-reply-btn" class="icon-btn">
-            <svg viewBox="0 0 24 24"><path d="M12,2A10,10 0 1,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 1,1 20,12A8,8 0 0,1 12,20M16.24,7.76C15.07,6.58 13.53,6 12,6V12L7.76,16.24C10.1,18.58 13.9,18.58 16.24,16.24C18.58,13.9 18.58,10.1 16.24,7.76Z"></path></svg>
+    <div class="wechat-send-btn-group" style="display: flex; gap: 10px;">
+        <button id="wechat-sticker-toggle-btn" class="icon-btn emoji-btn">
+            <svg viewBox="0 0 24 24">
+                <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"></path>
+            </svg>
+        </button>
+        <button id="wechat-get-reply-btn" class="icon-btn ai-reply-btn">
+            <svg viewBox="0 0 24 24">
+                <path d="M16.8 7.5l-1.2-2.9-2.8-1.1 2.8-1.2 1.2-2.9 1.2 2.9 2.8 1.2-2.8 1.1-1.2 2.9z"></path>
+                <path d="M8.8 21l-2.2-5.1-5-2.1 5-2.2 2.2-5.1 2.1 5.1 5 2.2-5 2.1-2.1 5.1z"></path>
+            </svg>
         </button>
     </div>
 </div>
 <!-- ▲▲▲ 粘贴结束 ▲▲▲ -->  
-	<!-- “+”号展开的功能面板 -->
-    <div id="function-panel" class="function-panel">
-        <div class="function-grid">
-            <div class="function-item" data-action="sticker"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"></path></svg></div><span>表情</span></div>
-            <div class="function-item" data-action="photo-video"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z"></path></svg></div><span>照片</span></div>
-            <div class="function-item" data-action="image-recognition"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M21.58,16.09L19.66,18L18.24,16.58L21,13.83C21.39,13.44 22,13.44 22.39,13.83L23.17,14.61C23.56,15 23.56,15.64 23.17,16.03L21.58,17.62M20.13,12.25L18.71,13.66L20.41,15.36L21.83,13.94L20.13,12.25M5.93,19H5C3.9,19 3,18.1 3,17V5C3,3.9 3.9,3 5,3H19C20.1,3 21,3.9 21,5V11.08L19,13.08V5H5V17H5.93L13.5,9.43L16.29,12.21L12.08,16.42L5.93,19Z"></path></svg></div><span>识图</span></div>
-            <div class="function-item" data-action="voice-message"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"></path></svg></div><span>语音</span></div>
-            <div class="function-item" data-action="voice-call"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z"></path></svg></div><span>通话</span></div>
-            <div class="function-item" data-action="wallet"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M20 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 18H4V8H20V18ZM4 6H20V6H4Z"></path></svg></div><span>钱包</span></div>
-            <div class="function-item" data-action="gift"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6H20M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M12.5,18C12.5,17.29 12.17,16.65 11.64,16.27C12.17,15.89 12.5,15.26 12.5,14.55C12.5,13.6 11.83,12.79 11,12.58V12H13V10H11V8H13V6H11V5C11,4.45 10.55,4 10,4H8C7.45,4 7,4.45 7,5V6H9V8H7V10H9V12H7V12.58C6.17,12.79 5.5,13.6 5.5,14.55C5.5,15.26 5.83,15.89 6.36,16.27C5.83,16.65 5.5,17.29 5.5,18H12.5Z"></path></svg></div><span>礼物</span></div>
-            <div class="function-item" data-action="time-skip"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M4 5v14l7-7-7-7zm9 0v14l7-7-7-7z"></path></svg></div><span>跳时</span></div>
-            <div class="function-item" data-action="file"><div class="icon-bg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"></path></svg></div><span>文件</span></div>
-            <div class="function-item" data-action="location"><div class="icon-bg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12C20,15.08 18.05,17.78 15.42,19.23L12,14.5L8.58,19.23C5.95,17.78 4,15.08 4,12A8,8 0 0,1 12,4M12,6.5A5.5,5.5 0 0,0 6.5,12A5.5,5.5 0 0,0 12,17.5A5.5,5.5 0 0,0 17.5,12A5.5,5.5 0 0,0 12,6.5Z"></path></svg></div><span>位置</span></div>
-            <div class="function-item" data-action="rollback"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z"></path></svg></div><span>重Roll</span></div>
-    <div class="function-item" data-action="continue-writing"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12A2,2 0 0,1 6,10M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12A2,2 0 0,1 18,10Z"></path></svg></div><span>续写</span></div>
-    <div class="function-item" data-action="diary"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M14 17H7V15H14V17M17 13H7V11H17V13M17 9H7V7H17V9Z"></path></svg></div><span>日记</span></div>
-    <div class="function-item" data-action="token-stats"><div class="icon-bg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17Z"/></svg></div><span id="token-stats-label">Token</span></div>
-</div>
-</div>
-<!-- ▲▲▲ 替换结束 ▲▲▲ -->
-        
-<!-- ▲▲▲ 粘贴到这里结束 ▲▲▲ -->
             <div class="message-input-area" id="message-input-default">
                 <input type="text" id="message-input" placeholder="输入消息...">
-                <button id="send-message-btn" class="icon-btn send-btn">➤</button>
-                <button id="get-reply-btn" class="icon-btn">
+                <button id="sticker-toggle-btn" class="icon-btn emoji-btn">
                     <svg viewBox="0 0 24 24">
-                        <path d="M12,2A10,10 0 1,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 1,1 20,12A8,8 0 0,1 12,20M16.24,7.76C15.07,6.58 13.53,6 12,6V12L7.76,16.24C10.1,18.58 13.9,18.58 16.24,16.24C18.58,13.9 18.58,10.1 16.24,7.76Z"/>
+                        <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"></path>
+                    </svg>
+                </button>
+                <button id="get-reply-btn" class="icon-btn ai-reply-btn">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M16.8 7.5l-1.2-2.9-2.8-1.1 2.8-1.2 1.2-2.9 1.2 2.9 2.8 1.2-2.8 1.1-1.2 2.9z"></path>
+                        <path d="M8.8 21l-2.2-5.1-5-2.1 5-2.2 2.2-5.1 2.1 5.1 5 2.2-5 2.1-2.1 5.1z"></path>
                     </svg>
                 </button>
             </div>
@@ -218,62 +206,82 @@
                 <button id="cancel-edit-btn" class="icon-btn" style="background-color: #aaa;">✗</button>
             </div>
         </div>
-        <div id="multi-select-bar"><span id="select-count">已选择 0 项</span>
-            <button class="btn btn-danger" id="delete-selected-btn" style="width: auto; padding: 8px 16px;">删除已选
-            </button>
+	<!-- “+”号展开的功能面板 -->
+    <div id="function-panel" class="function-panel">
+        <div class="function-pages-wrapper">
+            <div class="function-grid">
+            <div class="function-item" data-action="rollback"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z"></path></svg></div><span>重Roll</span></div>
+            <div class="function-item" data-action="continue-writing"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12A2,2 0 0,1 6,10M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12A2,2 0 0,1 18,10Z"></path></svg></div><span>续写</span></div>
+            <div class="function-item" data-action="photo-video"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z"></path></svg></div><span>照片</span></div>
+            <div class="function-item" data-action="image-recognition"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M21.58,16.09L19.66,18L18.24,16.58L21,13.83C21.39,13.44 22,13.44 22.39,13.83L23.17,14.61C23.56,15 23.56,15.64 23.17,16.03L21.58,17.62M20.13,12.25L18.71,13.66L20.41,15.36L21.83,13.94L20.13,12.25M5.93,19H5C3.9,19 3,18.1 3,17V5C3,3.9 3.9,3 5,3H19C20.1,3 21,3.9 21,5V11.08L19,13.08V5H5V17H5.93L13.5,9.43L16.29,12.21L12.08,16.42L5.93,19Z"></path></svg></div><span>识图</span></div>
+            <div class="function-item" data-action="voice-message"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"></path></svg></div><span>语音</span></div>
+            <div class="function-item" data-action="voice-call"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z"></path></svg></div><span>通话</span></div>
+            <div class="function-item" data-action="call-logs"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,9V3.5L18.5,9H13Z" /></svg></div><span>通话记录</span></div>
+            <div class="function-item" data-action="diary"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M14 17H7V15H14V17M17 13H7V11H17V13M17 9H7V7H17V9Z"></path></svg></div><span>日记</span></div>
+            <div class="function-item" data-action="wallet"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M20 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 18H4V8H20V18ZM4 6H20V6H4Z"></path></svg></div><span>钱包</span></div>
+            <div class="function-item" data-action="gift"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6H20M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M12.5,18C12.5,17.29 12.17,16.65 11.64,16.27C12.17,15.89 12.5,15.26 12.5,14.55C12.5,13.6 11.83,12.79 11,12.58V12H13V10H11V8H13V6H11V5C11,4.45 10.55,4 10,4H8C7.45,4 7,4.45 7,5V6H9V8H7V10H9V12H7V12.58C6.17,12.79 5.5,13.6 5.5,14.55C5.5,15.26 5.83,15.89 6.36,16.27C5.83,16.65 5.5,17.29 5.5,18H12.5Z"></path></svg></div><span>礼物</span></div>
+            <div class="function-item" data-action="location"><div class="icon-bg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12C20,15.08 18.05,17.78 15.42,19.23L12,14.5L8.58,19.23C5.95,17.78 4,15.08 4,12A8,8 0 0,1 12,4M12,6.5A5.5,5.5 0 0,0 6.5,12A5.5,5.5 0 0,0 12,17.5A5.5,5.5 0 0,0 17.5,12A5.5,5.5 0 0,0 12,6.5Z"></path></svg></div><span>位置</span></div>
+            <div class="function-item" data-action="file"><div class="icon-bg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"></path></svg></div><span>文件</span></div>
+            <div class="function-item" data-action="time-skip"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M4 5v14l7-7-7-7zm9 0v14l7-7-7-7z"></path></svg></div><span>跳时</span></div>
+            <div class="function-item" data-action="token-stats"><div class="icon-bg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17Z"/></svg></div><span id="token-stats-label">Token</span></div>
+            </div>
         </div>
-        <!-- ===== 重构后的表情包选择弹窗 ===== -->
-        <div id="sticker-modal">
-            <!-- 顶部：分组标签栏 + 更多菜单按钮 -->
-            <div class="sticker-modal-header">
-                <div class="sticker-tabs-container">
-                    <div class="sticker-tabs" id="sticker-tabs">
-                        <!-- 动态渲染：[全部] [未分类] [猫猫组]... -->
+        <div class="function-dots"></div>
+    </div>
+    <!-- ===== 重构后的表情包选择弹窗 ===== -->
+    <div id="sticker-modal">
+                <!-- 顶部：分组标签栏 + 更多菜单按钮 -->
+                <div class="sticker-modal-header">
+                    <div class="sticker-tabs-container">
+                        <div class="sticker-tabs" id="sticker-tabs">
+                            <!-- 动态渲染：[全部] [未分类] [猫猫组]... -->
+                        </div>
                     </div>
+                    <button class="sticker-menu-btn" id="sticker-menu-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"></path>
+                        </svg>
+                    </button>
                 </div>
-                <button class="sticker-menu-btn" id="sticker-menu-btn">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"></path>
-                    </svg>
-                </button>
-            </div>
-            
-            <!-- 中间：表情包网格 -->
-            <div class="sticker-grid" id="sticker-grid-container"></div>
-            
-            <!-- 🆕 多选管理底部操作栏 -->
-            <div class="sticker-selection-bar" id="sticker-selection-bar">
-                <!-- 🆕 全选按钮 -->
-                <button class="selection-bar-btn btn-select-all" id="select-all-stickers-btn">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M0.41,13.41L6,19L7.41,17.58L1.83,12M22.24,5.58L11.66,16.17L7.5,12L6.07,13.41L11.66,19L23.66,7M18,7L16.59,5.58L10.24,11.93L11.66,13.34L18,7Z"/>
-                    </svg>
-                    <span>全选</span>
-                </button>
-                <button class="selection-bar-btn" id="move-selected-stickers-btn">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10.93,11.47L13.45,14L10.93,16.53L12.34,17.94L16.28,14L12.34,10.06L10.93,11.47M7.66,17.94L9.07,16.53L6.55,14L9.07,11.47L7.66,10.06L3.72,14L7.66,17.94Z"/>
-                    </svg>
-                    <span>移动</span>
-                </button>
-                <div class="selection-info">
-                    <span id="selected-sticker-count">已选 0 项</span>
+                
+                <!-- 中间：表情包网格 -->
+                <div class="sticker-grid" id="sticker-grid-container"></div>
+                
+                <!-- 🆕 多选管理底部操作栏 -->
+                <div class="sticker-selection-bar" id="sticker-selection-bar">
+                    <!-- 🆕 全选按钮 -->
+                    <button class="selection-bar-btn btn-select-all" id="select-all-stickers-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M0.41,13.41L6,19L7.41,17.58L1.83,12M22.24,5.58L11.66,16.17L7.5,12L6.07,13.41L11.66,19L23.66,7M18,7L16.59,5.58L10.24,11.93L11.66,13.34L18,7Z"/>
+                        </svg>
+                        <span>全选</span>
+                    </button>
+                    <button class="selection-bar-btn" id="move-selected-stickers-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10.93,11.47L13.45,14L10.93,16.53L12.34,17.94L16.28,14L12.34,10.06L10.93,11.47M7.66,17.94L9.07,16.53L6.55,14L9.07,11.47L7.66,10.06L3.72,14L7.66,17.94Z"/>
+                        </svg>
+                        <span>移动</span>
+                    </button>
+                    <div class="selection-info">
+                        <span id="selected-sticker-count">已选 0 项</span>
+                    </div>
+                    <button class="selection-bar-btn btn-danger" id="delete-selected-stickers-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+                        </svg>
+                        <span>删除</span>
+                    </button>
+                    <button class="selection-bar-btn" id="exit-selection-mode-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                        </svg>
+                        <span>退出</span>
+                    </button>
                 </div>
-                <button class="selection-bar-btn btn-danger" id="delete-selected-stickers-btn">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
-                    </svg>
-                    <span>删除</span>
-                </button>
-                <button class="selection-bar-btn" id="exit-selection-mode-btn">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
-                    </svg>
-                    <span>退出</span>
-                </button>
             </div>
+    <!-- ===== 重构结束 ===== -->
+    </div>
         </div>
-        
         <!-- 底部菜单 Action Sheet -->
         <div class="sticker-menu-action-sheet" id="sticker-menu-action-sheet">
             <div class="action-sheet-backdrop" id="sticker-menu-backdrop"></div>
@@ -301,8 +309,26 @@
                 </button>
             </div>
         </div>
-        <!-- ===== 重构结束 ===== -->
     </div>
+<!-- ▲▲▲ 替换结束 ▲▲▲ -->
+        <div id="multi-select-bar"><span id="select-count">已选择 0 项</span>
+            <button class="btn btn-danger" id="delete-selected-btn" style="width: auto; padding: 8px 16px;">删除已选
+            </button>
+        </div>
+        <!-- ===== 通话详情弹窗 ===== -->
+        <div id="call-detail-modal" style="display: none;">
+            <div class="call-detail-bg" id="call-detail-bg"></div>
+            <div class="call-detail-mask"></div>
+            <div class="call-detail-content">
+                <div id="call-detail-meta" class="call-detail-meta"></div>
+                <div id="call-detail-transcript" class="call-detail-transcript"></div>
+            </div>
+            <div id="call-detail-return" class="call-detail-return">
+                <span class="call-detail-return-line"></span>
+                <span class="call-detail-return-text">—— 点击此处返回 ——</span>
+                <span class="call-detail-return-line"></span>
+            </div>
+        </div>
     <div id="world-book-screen" class="screen">
         <header class="app-header">
             <button class="back-btn" data-target="home-container">‹</button>
@@ -376,35 +402,6 @@
         </main>
     </div>
     <div id="api-settings-screen" class="screen"></div>
-<!-- 在 id="api-settings-screen" 的 </div> 之后添加以下代码 -->
-<!-- START: 新增渲染器应用界面 -->
-<div id="renderer-screen" class="screen">
-    <header class="app-header">
-        <button class="back-btn" data-target="home-container">‹</button>
-        <div class="title-container">
-            <h1 class="title">渲染器</h1>
-        </div>
-        <div class="action-btn-group">
-        	<div class="action-btn-group">
-    <button class="action-btn" id="import-renderer-rules-btn">导入</button> <!-- 新增的按钮 -->
-            <button class="action-btn" id="add-renderer-category-btn">分类</button>
-            <button class="action-btn" id="add-renderer-rule-btn">+</button>
-        </div>
-    </header>
-    <main class="content renderer-layout">
-        <div class="renderer-sidebar">
-            <ul class="list-container" id="renderer-category-list"></ul>
-        </div>
-        <div class="renderer-main">
-            <ul class="list-container" id="renderer-rule-list"></ul>
-            <div class="placeholder-text" id="no-renderer-rules-placeholder" style="display: none;">
-                <p>该分类下没有规则</p>
-                <p>点击右上角的“+”创建一条吧！</p>
-            </div>
-        </div>
-    </main>
-</div>
-<!-- END: 新增渲染器应用界面 -->
 <div id="diary-screen" class="screen">
     <header class="app-header">
         <button class="back-btn" data-target="chat-room-screen">‹</button>
@@ -426,6 +423,72 @@
     </main>
 </div>
     <div id="wallpaper-screen" class="screen"></div>
+    
+    <!-- ===== 通话记录管理中心 ===== -->
+    <div id="call-log-manager-screen" class="screen" style="background-color: #f5f5f5;">
+        <header class="app-header" style="background-color: #fff;">
+            <button class="back-btn" data-target="chat-room-screen">‹</button>
+            <div class="title-container">
+                <h1 class="title" id="call-log-manager-title">通话记录</h1>
+            </div>
+            <button class="action-btn" id="call-log-manage-btn" style="font-size: 14px; width: auto; padding: 0 10px;">管理</button>
+        </header>
+        <main class="content" style="padding: 0; background-color: #f5f5f5;">
+            <div id="call-log-list" class="list-container" style="padding: 10px;"></div>
+            <div class="placeholder-text" id="no-call-logs-placeholder" style="display: none; margin-top: 50px;">
+                <p>暂无通话记录</p>
+            </div>
+            <!-- 底部多选操作栏 -->
+            <div id="call-log-multi-select-bar" style="position: fixed; bottom: 0; left: 0; right: 0; background: white; padding: 15px; display: none; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); justify-content: space-between; align-items: center; z-index: 100;">
+                <span id="call-log-select-count" style="font-weight: bold; color: #333;">已选 0 项</span>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" id="call-log-select-all-btn" style="padding: 8px 15px; background: #e0e0e0; color: #333; border: none; border-radius: 6px;">全选</button>
+                    <button class="btn btn-danger" id="call-log-delete-btn" style="padding: 8px 15px; background: #ff4d4f; color: white; border: none; border-radius: 6px;">删除</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===== 通话记录编辑界面 ===== -->
+    <div id="call-log-edit-screen" class="screen" style="background-color: #f5f5f5;">
+        <header class="app-header" style="background-color: #fff;">
+            <button class="back-btn" id="call-log-edit-back-btn">‹</button>
+            <div class="title-container">
+                <h1 class="title">编辑记录</h1>
+            </div>
+            <button class="action-btn" id="call-log-save-btn" style="font-size: 14px; width: auto; padding: 0 10px;">保存</button>
+        </header>
+        <main class="content" style="padding: 15px; overflow-y: auto; background-color: #f5f5f5;">
+            <input type="hidden" id="edit-call-id">
+            <div class="form-group">
+                <label>通话对象</label>
+                <input type="text" id="edit-call-target" disabled style="background: #f0f0f0; border: none;">
+            </div>
+            <div class="form-group">
+                <label>标题</label>
+                <input type="text" id="edit-call-title" placeholder="输入通话标题">
+            </div>
+            <div class="form-group">
+                <label>通话时间</label>
+                <input type="text" id="edit-call-time" disabled style="background: #f0f0f0; border: none;">
+            </div>
+            <div class="form-group">
+                <label>通话时长</label>
+                <input type="text" id="edit-call-duration">
+            </div>
+            <div class="form-group">
+                <label style="display: flex; justify-content: space-between; align-items: center;">
+                    对话内容
+                    <small style="color: #999; font-weight: normal;">支持拖拽排序(待开发)</small>
+                </label>
+                <div id="edit-call-transcript-container" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- 动态生成对话行 -->
+                </div>
+                <button class="btn btn-secondary" id="add-transcript-line-btn" style="width: 100%; margin-top: 15px; border: 1px dashed #ccc; color: #666;">+ 添加一行对话</button>
+            </div>
+        </main>
+    </div>
+
     <div id="font-settings-screen" class="screen"></div>
     <div id="customize-screen" class="screen"></div>
     <div id="tutorial-screen" class="screen"></div>
@@ -719,6 +782,13 @@
     <!-- Active Call View -->
     <!-- 在 id="voice-call-overlay" 内部 -->
 <div id="active-call-view">
+    <button id="call-bg-reset-btn" style="position:absolute; top:16px; right:60px; background: rgba(255,255,255,0.75); border: none; width: 36px; height: 36px; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; opacity: 0.6;">
+        <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; color: #333;"><path d="M12 5V2L7 7l5 5V9c3.31 0 6 2.69 6 6a6 6 0 0 1-6 6 6 6 0 0 1-5.65-4H4.26A8 8 0 0 0 12 23a8 8 0 0 0 8-8c0-4.42-3.58-8-8-8z"></path></svg>
+    </button>
+    <button id="call-bg-btn" style="position:absolute; top:16px; right:16px; background: rgba(255,255,255,0.75); border: none; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; color: #333;"><path d="M4,4H16A2,2 0 0,1 18,6V14A2,2 0 0,1 16,16H4A2,2 0 0,1 2,14V6A2,2 0 0,1 4,4M4,6V14H16V6H4M20,8H22V20A2,2 0 0,1 20,22H8V20H20V8Z"></path></svg>
+    </button>
+    <input type="file" id="call-bg-input" accept="image/*" style="display:none;">
     <!-- 新增：固定的顶部信息面板 -->
     <div id="active-call-header">
         <img src="" alt="Avatar" class="call-avatar-large" id="active-call-header-avatar">
@@ -802,38 +872,6 @@
 <!-- === /我的人设预设控制 === -->
 </div>
                 <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
-<!-- === TTS 语音合成设置 === -->
-<div class="form-group" style="background: #fff8fa; padding: 15px; border-radius: 10px; border: 1px solid #fce4ec;">
-    <h4 style="color: var(--secondary-color); margin-top: 0; margin-bottom: 15px;">🎤 语音合成 (TTS)</h4>
-    
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <label for="enable-tts-switch" style="margin-bottom: 0;">启用语音合成</label>
-        <input type="checkbox" id="enable-tts-switch" style="width: auto; height: 20px;">
-    </div>
-    
-    <label for="ai-voice-id-input">语音 ID</label>
-    <input type="text" id="ai-voice-id-input" placeholder="例如: female-shaonv-jingpin" style="margin-bottom: 15px;">
-    
-    <label for="ai-voice-lang-select">语音语言/方言</label>
-    <select id="ai-voice-lang-select" style="width: 100%;">
-        <option value="">自动识别 (Auto)</option>
-        <option value="zh-CN">🇨🇳 国语/普通话 (Chinese)</option>
-        <option value="zh-HK">🇭🇰 粤语/广东话 (Cantonese)</option>
-        <option value="en-US">🇺🇸 英语 (English)</option>
-        <option value="ja-JP">🇯🇵 日语 (Japanese)</option>
-        <option value="ko-KR">🇰🇷 韩语 (Korean)</option>
-        <option value="de-DE">🇩🇪 德语 (German)</option>
-        <option value="fr-FR">🇫🇷 法语 (French)</option>
-        <option value="es-ES">🇪🇸 西班牙语 (Spanish)</option>
-        <option value="it-IT">🇮🇹 意大利语 (Italian)</option>
-        <option value="ru-RU">🇷🇺 俄语 (Russian)</option>
-    </select>
-    
-    <p style="font-size: 11px; color: #888; margin-top: 10px; margin-bottom: 0;">
-        💡 开启后可点击AI发送的语音消息气泡播放语音。需先在API设置中配置Minimax。
-    </p>
-</div>
-
                 <div class="form-group">
                     <button type="button" class="btn btn-secondary" id="link-world-book-btn">关联世界书</button>
                 </div>
@@ -856,31 +894,35 @@
 
 <!-- === 气泡预设控制（由 ChatGPT 插入） === -->
 <!-- 插入位置：自定义气泡样式 textarea 之后（已美化外观） -->
-<div class="panel panel-sm" style="padding:12px;border-radius:10px;border:1px solid var(--border-color,#e8e8ef);background:var(--panel-bg,#fff);box-shadow:var(--panel-shadow,0 4px 12px rgba(20,20,30,0.04));margin:10px 0;">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-    <label for="bubble-preset-select" style="width:88px;color:var(--muted,#667);font-size:13px;">气泡预设</label>
-    <select id="bubble-preset-select" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--input-border,#e6e6ea);background:var(--input-bg,#fff);font-size:14px;">
-      <option value="">— 选择预设 —</option>
-    </select>
-    <button type="button" id="apply-preset-btn" class="btn btn-primary" style="margin-left:8px;padding:7px 10px;border-radius:8px;">应用</button>
+<div class="panel panel-sm" style="padding:14px;border-radius:12px;border:1px solid var(--border-color,#e8e8ef);background:var(--panel-bg,#fff);box-shadow:var(--panel-shadow,0 6px 16px rgba(20,20,30,0.06));margin:12px 0;box-sizing:border-box;">
+  <div style="margin-bottom:15px;box-sizing:border-box;">
+    <div style="font-weight:bold;font-size:15px;margin-bottom:8px;white-space:nowrap;">气泡预设</div>
+    <div style="display:flex;align-items:center;gap:10px;box-sizing:border-box;">
+      <select id="bubble-preset-select" style="flex:1;min-width:0;height:36px;padding:0 12px;border-radius:10px;border:1px solid var(--input-border,#e6e6ea);background:#f8f8f8;font-size:14px;font-weight:bold;box-sizing:border-box;">
+        <option value="">— 选择预设 —</option>
+      </select>
+      <button type="button" id="apply-preset-btn" class="btn btn-primary" style="width:36px;height:36px;padding:0;border-radius:10px;font-weight:bold;box-shadow:0 3px 8px rgba(255,105,180,0.18);">应</button>
+    </div>
   </div>
 
-  <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-    <label style="width:88px;color:var(--muted,#667);font-size:13px;">外观操作</label>
-    <button type="button" id="save-preset-btn" class="btn" style="padding:7px 10px;border-radius:8px;">另存为预设</button>
-    <button type="button" id="manage-presets-btn" class="btn" style="padding:7px 10px;border-radius:8px;">管理</button>
+  <div style="margin-bottom:15px;box-sizing:border-box;">
+    <div style="display:flex;align-items:center;gap:10px;box-sizing:border-box;">
+      <div style="width:72px;min-width:72px;font-weight:bold;font-size:15px;white-space:nowrap;">外观操作</div>
+      <button type="button" id="save-preset-btn" class="btn" style="flex:1;padding:8px 12px;border-radius:10px;background:#f2f2f5;color:#333;font-weight:bold;box-shadow:0 3px 8px rgba(0,0,0,0.08);">另存为预设</button>
+      <button type="button" id="manage-presets-btn" class="btn" style="width:36px;height:36px;padding:0;border-radius:10px;background:#f2f2f5;color:#333;font-weight:bold;box-shadow:0 3px 8px rgba(0,0,0,0.08);">⚙</button>
+    </div>
   </div>
 
   
 </div>
 
 <!-- 管理预设 modal（样式微调） -->
-<div id="bubble-presets-modal" class="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);justify-content:center;align-items:center;z-index:9999;">
-  <div class="modal-window" style="max-width:520px;background:var(--panel-bg,#fff);padding:14px;border-radius:10px;box-shadow:0 12px 36px rgba(10,10,20,0.12);">
-    <h3 style="margin:0 0 10px 0;font-size:16px;">管理气泡预设</h3>
-    <div id="bubble-presets-list" style="max-height:340px; overflow:auto; margin-bottom:12px;"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;">
-      <button type="button" id="close-presets-modal" class="btn btn-primary" style="padding:8px 12px;border-radius:8px;">关闭</button>
+<div id="bubble-presets-modal" class="modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);justify-content:center;align-items:center;z-index:9999;">
+  <div class="modal-window" style="max-width:340px;width:90%;background:var(--panel-bg,#fff);padding:20px;border-radius:18px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 18px 46px rgba(10,10,20,0.18);position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);">
+    <h3 style="margin:0 0 8px 0;font-size:18px;font-weight:bold;color:#222;">管理气泡预设</h3>
+    <div id="bubble-presets-list" style="max-height:300px; overflow:auto; margin-bottom:12px;"></div>
+    <div style="display:flex;gap:6px;justify-content:center;">
+      <button type="button" id="close-presets-modal" class="btn btn-primary" style="padding:8px 14px;border-radius:10px;width:110px;font-size:14px;font-weight:bold;">关闭</button>
     </div>
   </div>
 </div>
@@ -888,7 +930,8 @@
 
 
                     <button type="button" class="btn btn-neutral" id="reset-custom-bubble-css-btn"
-                            style="margin-top: 10px; width: auto; padding: 5px 15px; font-size: 14px;">恢复默认
+                            style="margin-top: 12px; width: auto; padding: 8px 12px; font-size: 14px; font-weight: bold; border-radius: 10px; box-shadow: 0 3px 8px rgba(0,0,0,0.08);">
+                        恢复默认
                     </button>
                 </div>
 <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
@@ -1315,7 +1358,10 @@
     <div class="action-sheet" style="height: 60%; display: flex; flex-direction: column;">
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; border-bottom: 1px solid #eee; flex-shrink: 0;">
             <h3 style="margin: 0; font-size: 16px;">播放列表</h3>
-            <button id="open-add-song-modal-btn" class="btn btn-primary btn-small" style="font-size: 24px; padding: 0; width: 32px; height: 32px; border-radius: 50%;">+</button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="open-cloud-search-btn" class="btn btn-primary btn-small" style="font-size: 18px; padding: 0; width: 32px; height: 32px; border-radius: 50%;">🔍</button>
+                <button id="open-add-song-modal-btn" class="btn btn-primary btn-small" style="font-size: 24px; padding: 0; width: 32px; height: 32px; border-radius: 50%;">+</button>
+            </div>
         </div>
         <ul id="playlist-container" class="list-container" style="flex-grow: 1; overflow-y: auto; padding: 5px;">
             <!-- 歌曲列表将由JS动态生成 -->
@@ -1345,11 +1391,31 @@
                 <input type="url" id="song-album-art-input" placeholder="https://...">
             </div>
             <div class="form-group">
-                <label for="song-lyrics-input">歌词内容 (选填)</label>
+                <div class="form-group-header">
+                    <label for="song-lyrics-input">歌词内容 (选填)</label>
+                    <button type="button" id="lyrics-import-btn" class="btn btn-neutral btn-small lyrics-import-btn">导入</button>
+                </div>
                 <textarea id="song-lyrics-input" rows="5" placeholder="在此处粘贴 .lrc 文件内容..."></textarea>
             </div>
             <button type="submit" class="btn btn-primary">添加</button>
         </form>
+    </div>
+</div>
+
+<div id="cloud-search-modal" class="modal-overlay">
+    <div class="modal-window">
+        <div class="modal-header">
+            <h3>云端搜歌</h3>
+            <button id="close-cloud-search-btn" class="btn btn-neutral btn-small">×</button>
+        </div>
+        <form id="cloud-search-form">
+            <div class="form-group">
+                <label for="cloud-search-input">歌名 / 歌手</label>
+                <input type="text" id="cloud-search-input" placeholder="例如：万能青年旅店 或 夜曲-周杰伦" required>
+            </div>
+            <button type="submit" class="btn btn-primary">搜索</button>
+        </form>
+        <ul id="cloud-search-results" class="list-container" style="max-height: 40vh; overflow-y: auto; margin-top: 15px;"></ul>
     </div>
 </div>
 
@@ -1365,8 +1431,7 @@
 </div>
 
 <!-- 全局音频播放器 -->
-<audio id="global-audio-player"></audio>
-<audio id="tts-audio-player" style="display:none;"></audio>
+<audio id="global-audio-player" preload="metadata"></audio>
 
 <!-- 用于上传LRC文件的隐藏输入框 -->
 <input type="file" id="lrc-upload-input" accept=".lrc" style="display: none;">
@@ -2060,82 +2125,6 @@
 <!-- =============================================================== -->
 <!-- END: 交换日记内容查看器 -->
 <!-- =============================================================== -->
-<!-- START: 升级后的渲染器编辑弹窗 -->
-<div id="edit-renderer-rule-modal" class="modal-overlay">
-    <div class="modal-window" style="max-width: 95%;">
-        <h3>创建/编辑渲染规则</h3>
-        <form id="edit-renderer-rule-form">
-            <input type="hidden" id="renderer-rule-id">
-            <div class="form-group">
-                <label for="renderer-rule-name">规则名称</label>
-                <input type="text" id="renderer-rule-name" placeholder="为你的规则起个名字" required>
-            </div>
-            <div class="form-group">
-                <label>查找正则表达式 (Regex)</label>
-                <textarea id="renderer-rule-regex" rows="3" placeholder="例如：<L>([^<]+)<\/L>" required></textarea>
-                <div class="regex-flags-container">
-                    <label><input type="checkbox" id="regex-flag-g" value="g" checked>全局(g)</label>
-                    <label><input type="checkbox" id="regex-flag-i" value="i">忽略大小写(i)</label>
-                    <label><input type="checkbox" id="regex-flag-s" value="s">点匹配换行(s)</label>
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="renderer-rule-html">HTML 替换代码 (使用 $1, $2 引用捕获组)</label>
-                <textarea id="renderer-rule-html" rows="5" placeholder="例如：<div style='color:blue;'>$1</div>"></textarea>
-            </div>
-             <div class="form-group">
-                <label for="renderer-rule-trim">修剪字符串 (每行一个)</label>
-                <textarea id="renderer-rule-trim" rows="2" placeholder="在匹配前，会先从消息中移除这里列出的所有字符串。"></textarea>
-            </div>
-          <div class="renderer-options-grid">
-        <div class="form-group">
-            <label>作用范围</label>
-            <div class="scope-options">
-                <label><input type="checkbox" name="renderer-scope" value="user"> 用户输入</label>
-                <label><input type="checkbox" name="renderer-scope" value="ai" checked> AI输出</label>
-            </div>
-        </div>
-        <div class="form-group">
-            <label>其他选项</label>
-            <div class="scope-options">
-               <label><input type="checkbox" id="renderer-rule-enabled" checked> 启用此规则</label>
-               <!-- 新增：优先级输入框 -->
-               <label style="margin-left: 15px;">优先级: <input type="number" id="renderer-rule-priority" value="50" style="width: 60px; padding: 5px; border-radius: 6px; border: 1px solid #ddd;"></label>
-            </div>
-        </div>
-    </div>
-    <!-- END: 修改“其他选项”部分 -->
-            <div class="form-group">
-                <label>绑定角色 (规则仅对选中的角色生效)</label>
-                <div id="renderer-char-binding-list" class="char-binding-list"></div>
-            </div>
-            <hr style="border:none; border-top:1px solid #f0f0f0; margin: 20px 0;">
-    <div class="form-group">
-        <label for="renderer-rule-test-input">测试预览</label>
-        <textarea id="renderer-rule-test-input" rows="3" placeholder="在此输入要测试的内容，例如：<L>你好</L>"></textarea>
-    </div>
-    <div class="form-group">
-        <label>预览效果</label>
-        <div id="renderer-rule-preview-output" style="border: 1px solid #eee; padding: 15px; border-radius: 8px; min-height: 50px; background: #f9f9f9; line-height: 1.6; word-wrap: break-word;"></div>
-    </div>
-            <button type="submit" class="btn btn-primary">保存规则</button>
-        </form>
-    </div>
-</div>
-<!-- END: 升级后的渲染器编辑弹窗 -->
-<div id="renderer-category-modal" class="modal-overlay">
-    <div class="modal-window">
-        <h3>创建新分类</h3>
-        <form id="renderer-category-form">
-            <div class="form-group">
-                <label for="renderer-category-name">分类名称</label>
-                <input type="text" id="renderer-category-name" placeholder="例如：通用效果、角色专属" required>
-            </div>
-            <button type="submit" class="btn btn-primary">创建</button>
-        </form>
-    </div>
-</div>
-<!-- END: 新增渲染器编辑弹窗 -->
 	<!-- =============================================================== -->
 <!-- START: 新增“交换日记”功能界面 -->
 <!-- =============================================================== -->
@@ -2247,7 +2236,6 @@
         </div>
     </div>
 </div>
-<input type="file" id="renderer-import-input" accept=".json" style="display: none;" multiple>
 	<!-- === 新增：查看已撤回消息内容的弹窗 === -->
 <div id="view-recalled-modal" class="modal-overlay">
     <div class="modal-window">
@@ -3270,27 +3258,10 @@
                 <label for="add-bond-photo-btn">添加照片</label>
                  <button type="button" class="btn btn-secondary" id="add-bond-photo-btn">添加回忆照片</button>
             </div>
-            <button type="submit" class="btn btn-primary" style="margin-top: 15px;">保存设置</button>
+            <button type="button" class="btn btn-primary" data-action="save-settings" style="margin-top: 15px;">保存设置</button>
         </form>
     </div>
 </div>
-
-<!-- 2. “渲染器”App缺失的分类弹窗 -->
-<div id="renderer-category-modal" class="modal-overlay">
-    <div class="modal-window">
-        <h3>创建新分类</h3>
-        <form id="renderer-category-form">
-            <div class="form-group">
-                <label for="renderer-category-name">分类名称</label>
-                <input type="text" id="renderer-category-name" placeholder="例如：通用效果、角色专属" required>
-            </div>
-            <button type="submit" class="btn btn-primary">创建</button>
-        </form>
-    </div>
-</div>
-
-<!-- 3. “渲染器”App缺失的隐藏文件输入框 -->
-<input type="file" id="renderer-import-input" accept=".json" style="display: none;" multiple>
 
 <!-- =============================================================== -->
 <!-- END: 缺失模块 -->
@@ -3508,6 +3479,102 @@
     </main>
 </div>
 
+<div id="rendering-rules-screen" class="screen">
+    <div class="renderer-topbar">
+        <div id="renderer-back-btn" class="app-back-btn" onclick="switchScreen('home-container')">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M19 12H5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 19L5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <div id="rules-tabs"></div>
+        <div class="renderer-top-actions">
+            <div id="manage-categories-btn" class="app-action-btn" title="多选管理">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+                </svg>
+            </div>
+            <div id="add-new-rule-btn" class="app-action-btn" title="创建规则">+</div>
+        </div>
+    </div>
+    <div id="rules-content-container"></div>
+    
+<div id="renderer-move-category-modal" class="modal-overlay">
+    <div class="modal-window renderer-move-window">
+        <h3 style="margin:0 0 12px 0;">移动至分类</h3>
+        <p style="margin:0 0 12px 0; color:#666; font-size:13px;">选择现有分类或输入新分类名称</p>
+        <div class="form-group">
+            <label for="renderer-move-select">选择现有分类</label>
+            <select id="renderer-move-select"></select>
+        </div>
+        <div class="form-group">
+            <label for="renderer-move-input">或输入新分类名称</label>
+            <input type="text" id="renderer-move-input" placeholder="如：卡片组件">
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 16px;">
+            <button class="btn btn-neutral" id="renderer-move-cancel">取消</button>
+            <button class="btn btn-primary" id="renderer-move-confirm">确认</button>
+        </div>
+    </div>
+</div>
+    
+    <!-- 底部批量操作工具栏 -->
+    <div id="rules-batch-toolbar" class="glass-toolbar" style="display: none;">
+         <button class="toolbar-btn" id="batch-select-all-btn">全选</button>
+         <button class="toolbar-btn" id="batch-move-btn">移动</button>
+         <button class="toolbar-btn danger" id="batch-delete-btn">删除</button>
+         <button class="toolbar-btn" id="batch-cancel-btn">取消</button>
+    </div>
+</div>
+<div id="rule-editor-modal" class="modal-overlay">
+    <div class="modal-window rule-editor-window">
+        <div class="rule-editor-header">
+            <h3 id="rule-editor-title">创建新规则</h3>
+        </div>
+        <div class="rule-editor-divider"></div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 15px;">
+            <div class="form-group" style="flex-shrink: 0;">
+                    <label for="rule-name-input">规则名称</label>
+                    <input type="text" id="rule-name-input" placeholder="例如：美团外卖卡片">
+                </div>
+                <div class="form-group rule-category-group" style="flex-shrink: 0;">
+                     <label for="rule-category-input">所属分类</label>
+                     <div class="rule-category-select">
+                         <input type="text" id="rule-category-input" placeholder="输入或选择分类">
+                         <span class="rule-category-arrow">▾</span>
+                         <div id="rule-category-dropdown" class="rule-category-dropdown"></div>
+                     </div>
+                </div>
+                <div class="form-group" style="flex-shrink: 0;">
+                    <label for="rule-chat-id-select">生效范围 (Scope)</label>
+                    <select id="rule-chat-id-select">
+                        <option value="global">公用 (所有角色)</option>
+                    </select>
+                </div>
+            <div class="form-group" style="flex-grow: 1; display: flex; flex-direction: column;">
+                <label for="rule-regex-input">正则表达式 (使用g作为标志)</label>
+                <textarea id="rule-regex-input" rows="3" style="font-family: monospace; resize: vertical;" placeholder="例如：MTR\[(.*?)\]\[(.*?)\|(.*?)\]"></textarea>
+            </div>
+            <div class="form-group" style="flex-grow: 2; display: flex; flex-direction: column;">
+                <label for="rule-template-input">HTML 模板 (用 $1, $2 引用)</label>
+                <textarea id="rule-template-input" rows="6" style="font-family: monospace; resize: vertical;" placeholder="例如：<div class=`waimai-card`>...<span>$2</span>...</div>"></textarea>
+            </div>
+            <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                <label for="rule-enabled-switch" style="margin-bottom: 0;">启用规则</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="rule-enabled-switch" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+        <div class="rule-editor-footer">
+            <button class="btn btn-neutral" id="cancel-rule-editor-btn" data-lang-key="cancel">取消</button>
+            <button class="btn btn-primary" id="save-rule-btn" data-lang-key="save">保存规则</button>
+        </div>
+    </div>
+</div>
+
 <!-- 4. 提示音 -->
 <audio id="pomodoro-alert-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-clear-announce-tones-2861.mp3" preload="auto"></audio>
 
@@ -3577,6 +3644,38 @@
     </div>
 </div>
   
+    <script src="js/core/database.js"></script>
+    <script src="js/core/compatibility.js"></script>
+    <script src="js/wallet.js"></script>
+<script src="js/mall.js"></script>
+<script src="js/stickers.js"></script>
+<script src="js/worldbook.js"></script>
+<script src="js/api-settings.js"></script>
+<script src="js/renderers.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/music-player.js"></script>
+<script src="js/ai-phone.js"></script>
+<script src="js/features/soul-bond/soul-bond-logic.js"></script>
+<script src="js/features/soul-bond/soul-bond-daily-question.js"></script>
+<script src="js/features/soul-bond/soul-bond-wishlist.js"></script>
+<script src="js/features/soul-bond/soul-bond-pomodoro.js"></script>
+<script src="js/features/soul-bond/soul-bond-mood.js"></script>
+<script src="js/features/soul-bond/soul-bond-diary.js"></script>
+<script src="js/features/soul-bond/soul-bond-miss-you.js"></script>
+<script src="js/features/soul-bond/soul-bond-manager.js"></script>
+<script src="js/features/theme/chat-styling.js"></script>
+<script src="js/features/theme/system-appearance.js"></script>
+<script src="js/features/toolbox/tb-messenger.js"></script>
+<script src="js/features/toolbox/tb-plot.js"></script>
+<script src="js/features/toolbox/tb-media.js"></script>
+<script src="js/features/toolbox/tb-token.js"></script>
+<script src="js/features/toolbox/tb-ai-actions.js"></script>
+<script src="js/features/toolbox/tb-diary.js"></script>
+<script src="js/features/toolbox/tb-call.js"></script>
+<script src="js/features/toolbox/tb-finance.js"></script>
+<script src="js/features/toolbox/call-detail-modal.js"></script>
+    <script src="js/features/toolbox/call-log-manager.js"></script>
+    <script src="js/features/toolbox/tb-core.js"></script>
 <script src="script.js"></script>
 
 </body>
