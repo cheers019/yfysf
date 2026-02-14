@@ -2,7 +2,6 @@
     const TB_Token = {};
     let getContext = null;
     let showToast = null;
-    let calculateCurrentContextTokens = null;
 
     const getRuntime = () => {
         const context = typeof getContext === 'function' ? getContext() : null;
@@ -45,7 +44,7 @@
                 return;
             }
 
-            const calc = calculateCurrentContextTokens || window.calculateCurrentContextTokens;
+            const calc = window.tokenCalculator && window.tokenCalculator.calculate;
             if (typeof calc !== 'function') return;
             const contextTokens = calc(chat, chatType);
 
@@ -85,7 +84,6 @@
         if (!options) return;
         getContext = options.getContext;
         showToast = options.showToast || window.showToast;
-        calculateCurrentContextTokens = options.calculateCurrentContextTokens || window.calculateCurrentContextTokens;
 
         const tokenStatsCloseBtn = document.getElementById('token-stats-close-btn');
         const tokenStatsModal = document.getElementById('token-stats-modal');

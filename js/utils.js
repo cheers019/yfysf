@@ -232,3 +232,142 @@ function removeContextMenu() {
     if (menu) menu.remove();
 }
 
+const getTokenCalculatorDb = () => {
+    if (window.db) return window.db;
+    if (typeof db !== 'undefined') return db;
+    return null;
+};
+
+function estimateTokenCount(text) {
+    if (!text || typeof text !== 'string' || text.length === 0) {
+        return 0;
+    }
+    return Math.ceil(text.length * 1.5);
+};
+
+function calculateCurrentContextTokens(chat, chatType) {
+    if (!chat) {
+        return { system: 0, worldInfo: 0, history: 0, stickers: 0, total: 0 };
+    }
+
+    let systemPrompt = '';
+    if (chatType === 'private') {
+        const character = chat;
+        const currentTime = new Date().toLocaleString('zh-CN');
+        const persona = character.persona || '';
+        const myPersona = character.myPersona || '';
+        const realName = character.realName || '';
+        const myName = character.myName || '';
+        systemPrompt = `你正在一个名为"404"的线上聊天软件中扮演一个角色。\n角色名是：${realName}。我的称呼是：${myName}。\n你的角色设定是：${persona}\n关于我的人设：${myPersona}\n当前时间：${currentTime}`;
+        if (character.activeEffects && character.activeEffects.length > 0) {
+            systemPrompt += `\n当前生效的特殊效果...`;
+        }
+        systemPrompt += `\n行为准则、消息格式规则、对话节奏等...`;
+    } else {
+        const group = chat;
+        const groupName = group.name || '';
+        const members = group.members || [];
+        const memberInfo = members.map(m => `${m.groupNickname || m.realName}: ${m.persona || ''}`).join('\n');
+        systemPrompt = `你正在一个名为"404"的群聊中。群名：${groupName}\n成员信息：\n${memberInfo}`;
+    }
+
+    const systemTokens = estimateTokenCount(systemPrompt);
+
+    let worldInfoTokens = 0;
+    const runtimeDb = getTokenCalculatorDb();
+    if (chatType === 'private' && chat.worldBookIds && Array.isArray(chat.worldBookIds) && runtimeDb) {
+        let lastUserMessage = null;
+        if (chat.history && Array.isArray(chat.history)) {
+            if (typeof chat.history.findLast === 'function') {
+                lastUserMessage = chat.history.findLast(m => m.role === 'user');
+            } else {
+                for (let i = chat.history.length - 1; i >= 0; i--) {
+                    if (chat.history[i].role === 'user') {
+                        lastUserMessage = chat.history[i];
+                        break;
+                    }
+                }
+            }
+        }
+        const lastUserContent = lastUserMessage ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '') : '';
+
+        const triggeredWorldBooks = chat.worldBookIds
+            .map(id => runtimeDb.worldBooks ? runtimeDb.worldBooks.find(wb => wb.id === id) : null)
+            .filter(book => {
+                if (!book) return false;
+                if (book.alwaysActive) return true;
+                if (!book.keywords || !lastUserContent) return false;
+                const keywords = book.keywords.split(',').map(k => k.trim()).filter(Boolean);
+                if (keywords.length === 0) return false;
+                const contentToSearch = book.caseSensitive ? lastUserContent : lastUserContent.toLowerCase();
+                return keywords.some(keyword => {
+                    const keywordToSearch = book.caseSensitive ? keyword : keyword.toLowerCase();
+                    return contentToSearch.includes(keywordToSearch);
+                });
+            });
+
+        const worldBooksText = triggeredWorldBooks.map(wb => wb.content || '').join('\n');
+        worldInfoTokens = estimateTokenCount(worldBooksText);
+    }
+
+    let historyTokens = 0;
+    if (chat.history && Array.isArray(chat.history)) {
+        const maxMemory = chat.maxMemory || 10;
+        const historySlice = chat.history.slice(-maxMemory).filter(msg => msg.role !== 'system');
+        historySlice.forEach(msg => {
+            let content = '';
+            if (typeof msg.content === 'string') {
+                content = msg.content;
+            } else if (Array.isArray(msg.content)) {
+                const textParts = msg.content.filter(p => p.type === 'text').map(p => p.text || '').join('');
+                content = textParts;
+            } else if (msg.content) {
+                content = JSON.stringify(msg.content);
+            }
+            historyTokens += estimateTokenCount(content);
+        });
+    }
+
+    let stickersTokens = 0;
+    if (chatType === 'private') {
+        const character = chat;
+        let availableStickers = [];
+        if (runtimeDb && runtimeDb.myStickers && Array.isArray(runtimeDb.myStickers) && runtimeDb.myStickers.length > 0) {
+            let allowedGroups = [];
+            if (character.stickerGroups !== undefined && character.stickerGroups !== null) {
+                if (typeof character.stickerGroups === 'string' && character.stickerGroups.trim() !== '') {
+                    allowedGroups = character.stickerGroups.split(',').map(g => g.trim()).filter(Boolean);
+                }
+            }
+
+            if (allowedGroups.length > 0) {
+                availableStickers = runtimeDb.myStickers.filter(sticker => {
+                    const stickerGroup = (sticker.group || '未分类').trim();
+                    return allowedGroups.includes(stickerGroup);
+                });
+            }
+
+            if (availableStickers.length > 0) {
+                const stickerNames = availableStickers.map(s => s.name).join(', ');
+                const stickersPrompt = `11. **发送表情包的规则**: 你拥有发送表情包的能力。这是一个可选功能，你可以根据对话氛围和内容，自行判断是否需要发送表情包来辅助表达，你不必在每次回复中都包含表情包。这是你的表情包库：[${stickerNames}]。当你想要发送表情包时，你的回复必须严格遵循格式：\`[${character.realName}发送的表情包：{表情包名称}]\`禁止编造表情包库里没有的表情包。\n`;
+                stickersTokens = estimateTokenCount(stickersPrompt);
+            }
+        }
+    }
+
+    const totalTokens = systemTokens + worldInfoTokens + historyTokens + stickersTokens;
+
+    return {
+        system: systemTokens,
+        worldInfo: worldInfoTokens,
+        history: historyTokens,
+        stickers: stickersTokens,
+        total: totalTokens
+    };
+};
+
+window.tokenCalculator = {
+    calculate: calculateCurrentContextTokens,
+    estimate: estimateTokenCount
+};
+
