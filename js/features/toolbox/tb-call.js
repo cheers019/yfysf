@@ -760,5 +760,31 @@ DO NOT output anything else.`;
         }
     }
 
+    function registerCallRenderer() {
+        if (!window.displayDispatcher || typeof window.displayDispatcher.register !== 'function') return false;
+        window.displayDispatcher.register('call', function (data) {
+            if (!data) return '';
+            const { duration, id: callLogId, title } = data;
+            return `
+            <div class="file-card call-record-card" onclick="showCallDetail('${callLogId}')" style="cursor: pointer;">
+                <div class="file-card-icon-container" style="background: #e3f2fd; padding: 10px; border-radius: 8px;">
+                    <svg viewBox="0 0 24 24" fill="currentColor" style="width: 24px; height: 24px; color: #2196f3;">
+                        <path d="M20,15.5C18.75,15.5 17.55,15.3 16.43,14.93C16.08,14.82 15.69,14.9 15.41,15.18L13.21,17.38C10.38,15.94 8.06,13.62 6.62,10.79L8.82,8.59C9.1,8.31 9.18,7.92 9.07,7.57C8.7,6.45 8.5,5.25 8.5,4A1,1 0 0,0 7.5,3H4A1,1 0 0,0 3,4A17,17 0 0,0 20,21A1,1 0 0,0 21,20V16.5A1,1 0 0,0 20,15.5M19,12H21C21,7 17,3 12,3V5C15.86,5 19,8.13 19,12Z" />
+                    </svg>
+                </div>
+                <div class="file-card-info">
+                    <p class="file-card-name">${title || '通话记录'}</p>
+                    <p class="file-card-size">时长: ${duration}</p>
+                </div>
+            </div>`;
+        });
+        return true;
+    }
+
+    if (!registerCallRenderer()) {
+        window.displayDispatcherPending = window.displayDispatcherPending || [];
+        window.displayDispatcherPending.push(registerCallRenderer);
+    }
+
     window.TB_Call = TB_Call;
 })();

@@ -1,3 +1,38 @@
+window.soulBondManager = window.soulBondManager || {};
+
+function ensureBondDbHelpers() {
+    const db = window.db;
+    if (!db) return false;
+    if (Array.isArray(db.characters) && typeof db.characters.update !== 'function') {
+        db.characters.update = async (id, updates) => {
+            const character = db.characters.find(c => c.id === id);
+            if (!character) return false;
+            Object.assign(character, updates);
+            if (typeof window.saveData === 'function') await window.saveData();
+            return true;
+        };
+    }
+    if (!db.messages) db.messages = {};
+    if (typeof db.messages.update !== 'function') {
+        db.messages.update = async (chatId, chatType, messageId, updates) => {
+            const chat = chatType === 'group'
+                ? (Array.isArray(db.groups) ? db.groups.find(g => g.id === chatId) : null)
+                : (Array.isArray(db.characters) ? db.characters.find(c => c.id === chatId) : null);
+            if (!chat || !Array.isArray(chat.history)) return false;
+            const message = chat.history.find(m => m.id === messageId);
+            if (!message) return false;
+            Object.assign(message, updates);
+            if (window.dataStorage && typeof window.dataStorage.updateMessage === 'function') {
+                await window.dataStorage.updateMessage(chatId, chatType, messageId, updates);
+                return true;
+            }
+            if (typeof window.saveData === 'function') await window.saveData();
+            return true;
+        };
+    }
+    return true;
+}
+
 function renderBondInvitationScreen() {
     const myAvatarContainer = document.getElementById('bond-invite-my-avatar');
     const myProfile = window.db.characters[0]
@@ -355,3 +390,152 @@ function setupSoulBondApp() {
 window.renderSoulBondScreen = renderSoulBondScreen;
 window.renderBondInvitationScreen = renderBondInvitationScreen;
 window.SoulBondManager = { setup: setupSoulBondApp };
+
+window.soulBondManager.getChatListIconHTML = function (chat) {
+    if (!chat || chat.type !== 'private') return '';
+    const db = window.db;
+    const latestChat = db && Array.isArray(db.characters)
+        ? (db.characters.find(c => c.id === chat.id) || chat)
+        : chat;
+    const roster = typeof window.updateBondRoster === 'function' ? window.updateBondRoster(null, 'get') : [];
+    if (roster.includes(latestChat.id) || latestChat.soulBondStatus === 'active') {
+        return `
+                    <span class="soul-bond-icon" data-char-id="${latestChat.id}" title="解除心动关系">
+                        <svg class="soul-bond-icon-svg" viewBox="0 0 24 24">
+                            <path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z"></path>
+                        </svg>
+                    </span>`;
+    }
+    return '';
+};
+
+window.soulBondManager.handleIconClick = async function (e, chatId) {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    const db = window.db;
+    if (!db || !Array.isArray(db.characters)) return;
+    const character = db.characters.find(c => c.id === chatId);
+    if (!character) return;
+    if (confirm(`你确定要与 ${character.remarkName} 解除心动关系吗？`)) {
+        if (typeof window.updateBondRoster === 'function') window.updateBondRoster(chatId, 'remove');
+        character.isSoulBound = false;
+        character.soulBondStatus = 'none';
+        const systemContent = `[system: ${character.myName} 已与你解除心动关系。]`;
+        const contextMessage = {
+            id: `msg_unbond_ctx_${Date.now()}`,
+            role: 'user',
+            content: systemContent,
+            parts: [{ type: 'text', text: systemContent }],
+            timestamp: Date.now()
+        };
+        character.history.push(contextMessage);
+        if (typeof window.saveData === 'function') await window.saveData();
+        if (typeof window.renderChatList === 'function') window.renderChatList();
+        if (typeof window.showToast === 'function') window.showToast('心动关系已解除');
+    }
+};
+
+function initBondCardEvents(element, message) {
+    if (!element) return;
+    element.addEventListener('click', async (e) => {
+        const acceptBtn = e.target.closest('.bond-accept-btn');
+        const declineBtn = e.target.closest('.bond-decline-btn');
+        if (!acceptBtn && !declineBtn) return;
+        const messageWrapper = element.closest('.message-wrapper');
+        const messageId = messageWrapper ? messageWrapper.dataset.id : (message ? message.id : null);
+        if (!messageId) return;
+        const response = acceptBtn ? 'accepted' : 'declined';
+        if (window.soulBondManager && typeof window.soulBondManager.handleBondRequestResponse === 'function') {
+            await window.soulBondManager.handleBondRequestResponse(messageId, response);
+        }
+    });
+}
+
+async function handleBondRequestResponse(messageId, response) {
+    if (!ensureBondDbHelpers()) return;
+    const appState = window.appState || {};
+    const db = window.db;
+    const currentChatId = appState.currentChatId;
+    const currentChatType = appState.currentChatType || 'private';
+    const character = Array.isArray(db.characters) ? db.characters.find(c => c.id === currentChatId) : null;
+    if (!character) return;
+    const message = Array.isArray(character.history) ? character.history.find(m => m.id === messageId) : null;
+    if (!message || !message.bondRequestData || message.bondRequestData.status !== 'pending') return;
+    const updatedBondData = { ...message.bondRequestData, status: response };
+    await db.messages.update(currentChatId, currentChatType, messageId, { bondRequestData: updatedBondData });
+    if (response === 'accepted') {
+        const roster = typeof window.updateBondRoster === 'function' ? window.updateBondRoster(character.id, 'add') : [];
+        if (roster.length === 2) {
+            const otherCharId = roster.find(id => id !== character.id);
+            const otherCharacter = Array.isArray(db.characters) ? db.characters.find(c => c.id === otherCharId) : null;
+            if (otherCharacter) {
+                await db.characters.update(otherCharacter.id, { isSoulBound: false });
+            }
+        } else {
+            for (const c of db.characters) {
+                if (c.id !== character.id) {
+                    await db.characters.update(c.id, { isSoulBound: false, soulBondStatus: 'none' });
+                }
+            }
+        }
+        await db.characters.update(character.id, { isSoulBound: true, soulBondStatus: 'active' });
+        if (typeof window.showToast === 'function') window.showToast(`你与 ${character.remarkName} 已成功绑定！`);
+    } else {
+        await db.characters.update(character.id, { soulBondStatus: 'none' });
+        if (typeof window.showToast === 'function') window.showToast('你拒绝了邀请');
+    }
+    const systemContent = `[system: 我${response === 'accepted' ? '同意' : '拒绝'}了你的心动绑定请求。]`;
+    const contextMessage = {
+        id: `msg_bond_resp_ctx_${Date.now()}`,
+        role: 'user',
+        content: systemContent,
+        parts: [{ type: 'text', text: systemContent }],
+        timestamp: Date.now()
+    };
+    character.history.push(contextMessage);
+    if (typeof window.saveData === 'function') await window.saveData();
+    if (typeof window.renderChatList === 'function') window.renderChatList();
+    if (window.chatUiCore && typeof window.chatUiCore.renderMessages === 'function') {
+        window.chatUiCore.renderMessages(false, true);
+    } else if (typeof window.renderMessages === 'function') {
+        window.renderMessages(false, true);
+    }
+    if (typeof window.getAiReply === 'function') window.getAiReply();
+}
+
+function renderBondRequestCard(message, context) {
+    if (!message || !message.bondRequestData) return '';
+    const data = message.bondRequestData;
+    const appState = window.appState || {};
+    const db = window.db || appState.db;
+    const currentChatType = (context && context.currentChatType) ? context.currentChatType : (appState.currentChatType || 'private');
+    const currentChatId = (context && context.currentChatId) ? context.currentChatId : appState.currentChatId;
+    const senderId = message.senderId;
+    const isSent = (context && typeof context.isSent === 'boolean')
+        ? context.isSent
+        : (currentChatType === 'group' ? senderId === 'user_me' : message.role === 'user');
+    let senderNickname = (context && context.senderNickname) ? context.senderNickname : '';
+    if (!senderNickname && currentChatType === 'group' && db) {
+        const chat = (context && context.chat) ? context.chat : (db.groups ? db.groups.find(g => g.id === currentChatId) : null);
+        const sender = chat ? (isSent ? chat.me : (chat.members || []).find(m => m.id === senderId)) : null;
+        if (sender) {
+            senderNickname = sender.nickname || sender.groupNickname;
+        } else {
+            senderNickname = '未知成员';
+        }
+    }
+    let statusText = '等待回应...';
+    let statusColor = '#888';
+    let actionsHTML = '';
+    if (data.status === 'accepted') { statusText = '✓ 已同意'; statusColor = '#4CAF50'; }
+    else if (data.status === 'declined') { statusText = '✗ 已拒绝'; statusColor = '#F44336'; }
+    else {
+        if (!isSent) {
+            actionsHTML = `<div class="bond-request-actions"><button class="btn btn-neutral btn-small bond-decline-btn">再想想</button><button class="btn btn-primary btn-small bond-accept-btn">我愿意</button></div>`;
+            statusText = '';
+        }
+    }
+    return `<div class="bond-request-card" data-display-type="soul-bond-request"><p>${isSent ? '你向对方发起了心动绑定邀请' : `${senderNickname} 向你发起了心动绑定邀请`}</p>${actionsHTML}<p class="bond-request-status" style="color: ${statusColor};">${statusText || '&nbsp;'}</p></div>`;
+}
+
+window.displayDispatcher.register('soul-bond-request', renderBondRequestCard, initBondCardEvents);
+window.soulBondManager.handleBondRequestResponse = handleBondRequestResponse;

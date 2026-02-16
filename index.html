@@ -1599,56 +1599,6 @@
 <!-- =============================================================== -->
 <!-- END: 新增钱包功能HTML -->
 <!-- =============================================================== -->
-<!-- ▼▼▼ 在这里粘贴下面的新代码 ▼▼▼ -->
-<!-- AI POV: Character Selection Screen -->
-<div id="ai-character-select-screen" class="screen">
-    <header class="app-header">
-        <button class="back-btn" data-target="home-container">‹</button>
-        <div class="title-container">
-            <h1 class="title">选择AI视角</h1>
-        </div>
-        <div class="placeholder"></div>
-    </header>
-    <main class="content">
-        <ul class="list-container" id="ai-character-select-list"></ul>
-        <div class="placeholder-text" id="no-ai-chars-placeholder" style="display: none;">
-            <p>还没有创建任何AI角色哦~</p>
-        </div>
-    </main>
-</div>
-
-<!-- AI POV: AI's Chat List Screen -->
-<div id="ai-chat-list-screen" class="screen">
-    <header class="app-header">
-        <button class="back-btn" data-target="ai-character-select-screen">‹</button>
-        <div class="title-container">
-            <h1 class="title" id="ai-chat-list-title">的聊天列表</h1>
-        </div>
-        <div class="placeholder"></div>
-    </header>
-    <main class="content">
-        <ul class="list-container" id="ai-chat-list-container"></ul>
-         <div class="placeholder-text" id="no-ai-chats-placeholder" style="display: none;">
-            <p>Ta还没有和别人聊过天哦~</p>
-        </div>
-    </main>
-</div>
-
-<!-- AI POV: AI's Conversation View Screen -->
-<div id="ai-chat-view-screen" class="screen">
-   <header class="app-header">
-    <button class="back-btn" data-target="ai-chat-list-screen">‹</button>
-    <div class="title-container">
-        <h1 class="title" id="ai-chat-view-title">与...的对话</h1>
-    </div>
-    <div class="placeholder"></div>
-   </header>
-    <main class="content">
-        <div class="message-area" id="ai-message-area"></div>
-    </main>
-    <!-- 这个屏幕是只读的，所以没有输入框 -->
-</div>
-<!-- ▲▲▲ 新代码粘贴到这里结束 ▲▲▲ -->
 <!-- === Modal 结束 === -->
 <div id="voice-call-overlay">
     <img src="" alt="Avatar" class="call-avatar-large" id="call-avatar">
@@ -3645,6 +3595,7 @@
 </div>
   
     <script src="js/core/database.js"></script>
+    <script src="js/features/modules/dynamics.js"></script>
     <script src="js/core/compatibility.js"></script>
     <script src="js/features/modules/wallet.js"></script>
 <script src="js/features/modules/mall.js"></script>
@@ -3653,6 +3604,9 @@
 <script src="js/api-settings.js"></script>
 <script src="js/features/modules/renderers.js"></script>
 <script src="js/utils.js"></script>
+<script src="js/core/display-dispatcher.js"></script>
+<script src="js/core/chat-ui-core.js"></script>
+<script src="js/features/active-cards/calendar-driver.js"></script>
 <script src="js/features/modules/music-player.js"></script>
 <script src="js/features/modules/ai-phone.js"></script>
 <script src="js/features/soul-bond/soul-bond-logic.js"></script>

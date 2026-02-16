@@ -208,5 +208,55 @@
         'location': openLocationModal
     });
 
+    function registerPlotRenderers() {
+        if (!window.displayDispatcher || typeof window.displayDispatcher.register !== 'function') return false;
+        window.displayDispatcher.register('file', function (data) {
+            if (!data) return '';
+            if (data.fileData && data.fileData.name) {
+                const fileSize = formatFileSize(new Blob([data.fileData.content]).size);
+                return `<div class="file-card" data-file-name="${escapeHTML(data.fileData.name)}" data-file-content="${escapeHTML(data.fileData.content)}"><img src="https://i.postimg.cc/vms1Vd9X/1040g2sg31hh9ub1v3oeg5pbsckvn39vt3mbflao.png" alt="file icon" class="file-card-icon"><div class="file-card-info"><p class="file-card-name">${escapeHTML(data.fileData.name)}</p><p class="file-card-size">${fileSize}</p></div></div>`;
+            }
+            if (data.fileMatch) {
+                let fileName = '未命名文件.txt', fileContent = '', parseSuccess = false;
+                const rawJson = data.fileMatch[1];
+                try { let cleanJson = rawJson.replace(/[\u201C\u201D]/g, '"').replace(/'/g, '"').replace(/(?:\r\n|\r|\n)/g, '\\n'); const fileData = JSON.parse(cleanJson); if (fileData) { fileName = fileData.name || fileName; fileContent = fileData.content || ''; parseSuccess = true; } } catch (e) { }
+                if (!parseSuccess) { try { const nameMatch = rawJson.match(/name["']?\s*[:：]\s*["']([^"']+)["']/i); if (nameMatch) fileName = nameMatch[1]; const contentMatch = rawJson.match(/content["']?\s*[:：]\s*["']([\s\S]*?)["']\s*(?:,|}|\])/i); if (contentMatch) { fileContent = contentMatch[1]; parseSuccess = true; } } catch (e2) { } }
+                if (parseSuccess || fileContent.length > 0) {
+                    const fileSize = formatFileSize(new Blob([fileContent]).size);
+                    return `<div class="file-card" data-file-name="${escapeHTML(fileName)}" data-file-content="${escapeHTML(fileContent)}"><img src="https://i.postimg.cc/vms1Vd9X/1040g2sg31hh9ub1v3oeg5pbsckvn39vt3mbflao.png" alt="file icon" class="file-card-icon"><div class="file-card-info"><p class="file-card-name">${escapeHTML(fileName)}</p><p class="file-card-size">${fileSize}</p></div></div>`;
+                }
+                return `<div class="system-notification-bubble">文件生成格式有误，无法显示</div>`;
+            }
+            return '';
+        });
+        window.displayDispatcher.register('location', function (data) {
+            if (!data) return '';
+            let mainLoc, detailLoc;
+            if (data.locationData) { mainLoc = data.locationData.main; detailLoc = data.locationData.detail; }
+            else if (data.locationMatch) { mainLoc = data.locationMatch[2] || data.locationMatch[5]; detailLoc = data.locationMatch[3] || data.locationMatch[6]; }
+            if (!mainLoc) return '';
+            return `<div class="location-card" data-location-main="${escapeHTML(mainLoc)}" data-location-detail="${escapeHTML(detailLoc)}"><div class="location-card-info"><p class="location-main">${escapeHTML(mainLoc)}</p><p class="location-detail">${escapeHTML(detailLoc)}</p></div><div class="location-map"></div></div>`;
+        });
+        window.displayDispatcher.register('time-skip', function (data) {
+            if (!data || !data.message) return null;
+            const { message, timeSkipMatch, inviteMatch, renameMatch } = data;
+            const wrapper = document.createElement('div');
+            wrapper.dataset.id = message.id;
+            wrapper.className = 'message-wrapper system-notification';
+            let bubbleText = '';
+            if (timeSkipMatch) bubbleText = timeSkipMatch[1];
+            if (inviteMatch) bubbleText = `${inviteMatch[1]}邀请${inviteMatch[2]}加入了群聊`;
+            if (renameMatch) bubbleText = `${renameMatch[1]}修改群名为“${renameMatch[2]}”`;
+            wrapper.innerHTML = `<div class="system-notification-bubble">${bubbleText}</div>`;
+            return wrapper;
+        });
+        return true;
+    }
+
+    if (!registerPlotRenderers()) {
+        window.displayDispatcherPending = window.displayDispatcherPending || [];
+        window.displayDispatcherPending.push(registerPlotRenderers);
+    }
+
     window.TB_Plot = TB_Plot;
 })();

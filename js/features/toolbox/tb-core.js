@@ -103,14 +103,23 @@
         }
 
         if (chatRoomContent) {
-            chatRoomContent.addEventListener('click', () => {
-                if (functionPanel && functionPanel.classList.contains('visible')) {
-                    functionPanel.classList.remove('visible');
+            chatRoomContent.addEventListener('click', (e) => {
+                const loadMoreBtn = e.target.closest('#load-more-btn');
+                if (loadMoreBtn) return;
+                if (e.target.closest('.message-bubble')) return;
+                if (e.target.closest('.card-v5')) return;
+                if (e.target.closest('.load-more-btn')) return;
+                const panelVisible = (functionPanel && functionPanel.classList.contains('visible')) || (stickerModal && stickerModal.classList.contains('visible'));
+                const clickedInsidePanel = (functionPanel && functionPanel.contains(e.target)) || (stickerModal && stickerModal.contains(e.target));
+                if (panelVisible && !clickedInsidePanel) {
+                    if (functionPanel && functionPanel.classList.contains('visible')) {
+                        functionPanel.classList.remove('visible');
+                    }
+                    if (stickerModal && stickerModal.classList.contains('visible')) {
+                        stickerModal.classList.remove('visible');
+                    }
+                    setTimeout(scrollToBottom, 50);
                 }
-                if (stickerModal && stickerModal.classList.contains('visible')) {
-                    stickerModal.classList.remove('visible');
-                }
-                setTimeout(scrollToBottom, 50);
             });
         }
 

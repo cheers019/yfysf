@@ -2073,3 +2073,53 @@ async function notifyAiOfDelivery(messageId) {
 }
 // ===============================================================
 // END: 商城购物流程核心JS函数
+
+function registerDeliveryRenderer() {
+    if (!window.displayDispatcher || typeof window.displayDispatcher.register !== 'function') return false;
+    window.displayDispatcher.register('delivery', function (data) {
+        if (!data) return '';
+        return `<div class="product-delivery-card"><img src="${data.productImage}" alt="商品" class="product-delivery-card-icon"><div class="product-delivery-card-info"><p class="product-delivery-card-title">${data.productName}</p><p class="delivery-countdown-display" data-countdown-type="delivery" data-eta="${data.eta}"></p></div></div>`;
+    });
+    return true;
+}
+
+if (!registerDeliveryRenderer()) {
+    window.displayDispatcherPending = window.displayDispatcherPending || [];
+    window.displayDispatcherPending.push(registerDeliveryRenderer);
+}
+
+function registerPaymentRequestRenderer() {
+    if (!window.displayDispatcher || typeof window.displayDispatcher.register !== 'function') return false;
+    window.displayDispatcher.register('payment-request', function (data) {
+        if (!data) return '';
+        const isSent = data._isSent === true;
+        let actionsHTML = '';
+        let statusText = '';
+        if (data.status === 'pending' && isSent) { statusText = `<p class="payment-request-status">等待对方付款...</p>`; }
+        else if (data.status === 'pending' && !isSent) {
+            actionsHTML = `<div class="payment-request-actions"><button class="btn btn-neutral btn-small payment-request-decline">残忍拒绝</button><button class="btn btn-primary btn-small payment-request-accept">为Ta付款</button></div>`;
+        } else if (data.status === 'paid') { statusText = `<p class="payment-request-status" style="color: #4CAF50;">✓ 已支付</p>`; }
+        else if (data.status === 'declined') { statusText = `<p class="payment-request-status" style="color: #F44336;">✗ 已拒绝</p>`; }
+        return `<div class="payment-request-card" data-display-type="payment-request"><p class="payment-request-title">${data.requesterName} 发起的代付</p><p class="payment-request-amount">¥${data.amount.toFixed(2)}</p><p class="payment-request-desc">${data.items.map(i => i.name).join(', ')}</p>${actionsHTML}${statusText}</div>`;
+    }, function (element) {
+        if (!element) return;
+        element.addEventListener('click', async (e) => {
+            const acceptBtn = e.target.closest('.payment-request-accept');
+            const declineBtn = e.target.closest('.payment-request-decline');
+            if (!acceptBtn && !declineBtn) return;
+            const messageWrapper = element.closest('.message-wrapper');
+            if (!messageWrapper) return;
+            const messageId = messageWrapper.dataset.id;
+            const decision = acceptBtn ? 'paid' : 'declined';
+            if (typeof handleAiPaymentDecision === 'function') {
+                await handleAiPaymentDecision(messageId, decision);
+            }
+        });
+    });
+    return true;
+}
+
+if (!registerPaymentRequestRenderer()) {
+    window.displayDispatcherPending = window.displayDispatcherPending || [];
+    window.displayDispatcherPending.push(registerPaymentRequestRenderer);
+}

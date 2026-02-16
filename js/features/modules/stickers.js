@@ -326,6 +326,11 @@ async function setupStickerSystem() {
             chatRoomContent.scrollTop = chatRoomContent.scrollHeight;
         }
     };
+    const shouldScrollToBottom = () => {
+        if (!messageArea) return false;
+        const distance = messageArea.scrollHeight - messageArea.scrollTop - messageArea.clientHeight;
+        return distance < 120;
+    };
 
     // 表情包弹窗开关
     stickerToggleBtns.forEach((btn) => {
@@ -338,7 +343,9 @@ async function setupStickerSystem() {
                 renderStickerTabs(); // 🆕 渲染分组标签
                 renderStickerGrid();
             }
-            setTimeout(scrollToBottom, 50);
+            if (shouldScrollToBottom()) {
+                setTimeout(scrollToBottom, 50);
+            }
         });
     });
     
@@ -1275,4 +1282,44 @@ function renderMyStickers() {
 
         stickerGridContainer.appendChild(item);
     });
+}
+
+function registerStickerRenderer() {
+    if (!window.displayDispatcher || typeof window.displayDispatcher.register !== 'function') return false;
+    window.displayDispatcher.register('sticker', function (message) {
+        if (!message || !message.content) return '';
+        const content = message.content;
+        const sentStickerRegex = /\[(?:.+?)的表情包：.+?\]/i;
+        const receivedStickerRegex = /\[(?:.+?)发送的表情包：([\s\S]+?)\]/i;
+        const sentStickerMatch = content.match(sentStickerRegex);
+        const receivedStickerMatch = content.match(receivedStickerRegex);
+        const isSent = message.senderId ? (message.senderId === 'user_me') : (message.role === 'user');
+        if (!((isSent && sentStickerMatch) || (!isSent && receivedStickerMatch))) return '';
+        const db = (window.appState && window.appState.db) ? window.appState.db : window.db;
+        if (!db) return '';
+        const stickerData = message.stickerData;
+        let stickerSrc = null, stickerName = '';
+        if (isSent) {
+            stickerSrc = stickerData;
+            const match = content.match(/\[.*?的表情包：(.*?)\]/);
+            if (match) stickerName = match[1];
+        } else {
+            stickerName = receivedStickerMatch[1].trim();
+            const sticker = db.myStickers.find(s => s.name === stickerName);
+            if (sticker) { stickerSrc = sticker.data; }
+            else {
+                const urlMatch = stickerName.match(/https?:\/\/[^\s\])]+/);
+                if (urlMatch) { stickerSrc = urlMatch[0]; }
+                else { const pathExtractionRegex = /[a-zA-Z0-9]+\/.*$/; const extractedPathMatch = stickerName.match(pathExtractionRegex); const finalPath = extractedPathMatch ? extractedPathMatch[0] : stickerName; stickerSrc = `https://i.postimg.cc/${finalPath}`; }
+            }
+        }
+        if (stickerSrc) { return `<div class="image-bubble"><img src="${stickerSrc}" alt="表情包: ${escapeHTML(stickerName)}"></div>`; }
+        return escapeHTML(`[表情包：${stickerName}]`);
+    });
+    return true;
+}
+
+if (!registerStickerRenderer()) {
+    window.displayDispatcherPending = window.displayDispatcherPending || [];
+    window.displayDispatcherPending.push(registerStickerRenderer);
 }

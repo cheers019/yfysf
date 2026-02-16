@@ -418,4 +418,85 @@
         }
     };
 
+    function registerFinanceRenderers() {
+        if (!window.displayDispatcher || typeof window.displayDispatcher.register !== 'function') return false;
+        window.displayDispatcher.register('transfer', function (data) {
+            if (!data) return '';
+            const { privateSentTransferMatch, privateReceivedTransferMatch, groupTransferMatch, transferStatus, isSent } = data;
+            let amount, remarkText, titleText, statusText, cardClass;
+
+            if (groupTransferMatch) {
+                const from = groupTransferMatch[1];
+                const to = groupTransferMatch[2];
+                amount = parseFloat(groupTransferMatch[3]).toFixed(2);
+                remarkText = groupTransferMatch[4] || '';
+                titleText = isSent ? `向 ${to} 转账` : `${from} 向你转账`;
+                cardClass = isSent ? 'sent-transfer' : 'received-transfer';
+                statusText = '待查收';
+            } else if (privateSentTransferMatch) {
+                amount = parseFloat(privateSentTransferMatch[1]).toFixed(2);
+                remarkText = privateSentTransferMatch[2] || '';
+                titleText = isSent ? '转账' : '给你转账';
+                cardClass = isSent ? 'sent-transfer' : 'received-transfer';
+                statusText = '待查收';
+                if (transferStatus === 'received') { statusText = '已收款'; cardClass += ' received'; }
+                else if (transferStatus === 'returned') { statusText = '已退回'; cardClass += ' returned'; }
+            } else if (privateReceivedTransferMatch) {
+                amount = parseFloat(privateReceivedTransferMatch[1]).toFixed(2);
+                remarkText = privateReceivedTransferMatch[2] || '';
+                titleText = '转账';
+                cardClass = isSent ? 'sent-transfer' : 'received-transfer';
+                statusText = '转账给你';
+                if (transferStatus === 'received') { statusText = '已收款'; cardClass += ' received'; }
+                else if (transferStatus === 'returned') { statusText = '已退回'; cardClass += ' returned'; }
+            } else {
+                return '';
+            }
+
+            const remarkHTML = remarkText ? `<p class="transfer-remark">${remarkText}</p>` : '';
+            return `<div class="transfer-card ${cardClass}" data-display-type="transfer"><div class="overlay"></div><div class="transfer-content"><p class="transfer-title">${titleText}</p><p class="transfer-amount">¥${amount}</p>${remarkHTML}<p class="transfer-status">${statusText}</p></div></div>`;
+        }, function (element) {
+            if (!element) return;
+            element.addEventListener('click', (e) => {
+                const transferCard = e.target.closest('.transfer-card.received-transfer');
+                if (!transferCard) return;
+                if (window.currentChatType !== 'private') return;
+                const wrapper = transferCard.closest('.message-wrapper');
+                if (!wrapper) return;
+                const messageId = wrapper.dataset.id;
+                const chat = window.db.characters.find(c => c.id === window.currentChatId);
+                const message = chat ? chat.history.find(m => m.id === messageId) : null;
+                if (message) {
+                    if (message.transferStatus !== 'received' && message.transferStatus !== 'returned') {
+                        if (window.TB_Finance && typeof window.TB_Finance.handleReceivedTransferClick === 'function') {
+                            window.TB_Finance.handleReceivedTransferClick(message.id);
+                        }
+                    }
+                }
+            });
+        });
+        window.displayDispatcher.register('gift', function (data) {
+            if (!data) return '';
+            const { privateGiftMatch, groupGiftMatch, giftStatus, isSent } = data;
+            const match = privateGiftMatch || groupGiftMatch;
+            if (!match) return '';
+            const description = groupGiftMatch ? groupGiftMatch[3].trim() : match[1].trim();
+            let giftText;
+            if (groupGiftMatch) {
+                const from = groupGiftMatch[1];
+                const to = groupGiftMatch[2];
+                giftText = isSent ? `你送给 ${to} 的礼物` : `${from} 送给 ${to} 的礼物`;
+            } else {
+                giftText = '您有一份礼物～';
+            }
+            return `<div class="gift-card ${giftStatus === 'received' ? 'received' : ''}" data-display-type="gift"><img src="https://i.postimg.cc/rp0Yg31K/chan-75.png" alt="gift" class="gift-card-icon"><div class="gift-card-text">${giftText}</div><div class="gift-card-received-stamp">已查收</div></div><div class="gift-card-description">${description}</div>`;
+        });
+        return true;
+    }
+
+    if (!registerFinanceRenderers()) {
+        window.displayDispatcherPending = window.displayDispatcherPending || [];
+        window.displayDispatcherPending.push(registerFinanceRenderers);
+    }
+
 })();

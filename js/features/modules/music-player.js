@@ -888,3 +888,18 @@ function renderPlaylist() { return renderPlaylistPanel(); }
 window.searchAndPlaySong = searchAndPlaySong;
 window.playSong = playSong;
 window.refreshSongLink = refreshSongLink;
+
+if (window.displayDispatcher && typeof window.displayDispatcher.register === 'function') {
+    window.displayDispatcher.register('music', (songData) => {
+        const titleText = ((songData && songData.name) ? songData.name : '').trim();
+        const artistText = ((songData && songData.artist) ? songData.artist : '').trim();
+        const title = escapeHTML(titleText || '未命名歌曲');
+        const artist = escapeHTML(artistText || '未知歌手');
+        const coverRaw = resolveMusicCover(songData && (songData.cover || songData.albumArt));
+        const urlRaw = (songData && songData.url) ? songData.url : '';
+        const cover = escapeHTML(coverRaw);
+        const url = escapeHTML(urlRaw);
+        const fallbackCover = escapeHTML(window.defaultMusicCoverUrl);
+        return `<div class="music-card ai-music-card" data-song-name="${title}" data-song-artist="${artist}" data-song-url="${url}" data-song-cover="${cover}"><img src="${cover}" alt="album cover" class="music-card-icon" onerror="this.src='${fallbackCover}';this.onerror=null;"><div class="music-card-info"><p class="music-card-title">${title}</p><p class="music-card-artist">${artist}</p></div><button class="music-card-play-btn" type="button" aria-label="播放"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></button></div>`;
+    });
+}

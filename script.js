@@ -51,19 +51,54 @@ document.getElementById('tutorial-screen').innerHTML = `<header class="app-heade
         // 已搬迁至 database.js
 window.currentChatId = null;
         let currentQuotedMessageId = null, currentChatType = null, isGenerating = false, longPressTimer = null;
+        let myTopName = localStorage.getItem('myTopName') || '我';
+        let myTopAvatar = localStorage.getItem('myTopAvatar') || null;
+        window.appState = window.appState || {
+            currentChatId: null,
+            currentChatType: null,
+            myTopName: null,
+            myTopAvatar: null,
+            db: window.db || null,
+            currentHistory: []
+        };
+        function syncAppState() {
+            if (!window.appState) return;
+            window.appState.currentChatId = currentChatId;
+            window.appState.currentChatType = currentChatType;
+            window.appState.myTopName = myTopName;
+            window.appState.myTopAvatar = myTopAvatar;
+            window.appState.db = window.db;
+            if (window.db && currentChatId && currentChatType) {
+                if (currentChatType === 'private' && Array.isArray(window.db.characters)) {
+                    const chat = window.db.characters.find(c => c.id === currentChatId);
+                    window.appState.currentHistory = chat && Array.isArray(chat.history) ? chat.history : [];
+                } else if (currentChatType === 'group' && Array.isArray(window.db.groups)) {
+                    const chat = window.db.groups.find(g => g.id === currentChatId);
+                    window.appState.currentHistory = chat && Array.isArray(chat.history) ? chat.history : [];
+                } else {
+                    window.appState.currentHistory = [];
+                }
+            } else {
+                window.appState.currentHistory = [];
+            }
+            console.log("[AppState] 数据已同步:", window.appState);
+        }
+        window.syncAppState = syncAppState;
         Object.defineProperty(window, 'currentChatType', {
             get: () => currentChatType,
             set: value => {
                 currentChatType = value;
+                window.syncAppState();
             }
         });
+        window.syncAppState();
         let isSending = false; // 🆕 防止重复发送用户消息的锁
         inputElement = null;
         let isInScreenshotMode = false;
 let selectedMessagesForScreenshot = new Set();
 let notificationQueue = [];
 let isNotificationShowing = false;
-            isInMultiSelectMode = false, editingMessageId = null, currentPage = 1;
+            isInMultiSelectMode = false, editingMessageId = null;
         window.currentTransferMessageId = null;
         let currentEditingWorldBookId = null;
         window.currentGroupAction = {type: null, recipients: []};
@@ -71,6 +106,9 @@ let isNotificationShowing = false;
 // ▲▲▲ 添加结束 ▲▲▲
         let selectedMessageIds = new Set();
         const MESSAGES_PER_PAGE = 50;
+        window.chatUiCoreState = window.chatUiCoreState || {};
+        window.chatUiCoreState.currentPage = 1;
+        window.chatUiCoreState.messagesPerPage = MESSAGES_PER_PAGE;
 
         // --- DOM Element Cache ---
         const screens = document.querySelectorAll('.screen'),
@@ -240,6 +278,7 @@ if (!db.userDiaries) {
                 window.ChatStyling.init();
             }
             window.db = db;
+            window.syncAppState();
             document.body.addEventListener('click', (e) => {
                 if (e.target.closest('.context-menu')) {
                     e.stopPropagation();
@@ -288,123 +327,6 @@ if (db.characters.some(c => c.userDiaries && c.userDiaries.length > 0)) {
             setupChatListScreen();
             setupAddCharModal();
             setupChatRoom();
-// ===============================================================
-// START: 日历全局驱动器 (修复 innerHTML 不执行脚本的问题)
-// ===============================================================
-(function startCalendarDriver() {
-    console.log("日历全局驱动器已启动...");
-
-    // 定义渲染函数
-    function renderCalendar(root) {
-        var rawEl = root.querySelector('.cal-raw-data');
-        var viewEl = root.querySelector('.cal-ui-view');
-        if (!rawEl || !viewEl) return;
-
-        try {
-            var raw = rawEl.value || '';
-            // 数据清洗
-            raw = raw.replace(/```json/g, '').replace(/```/g, '').trim();
-            raw = raw.replace(/：/g, ':');
-            if (raw.endsWith(']')) raw = raw.slice(0, -1);
-
-            var parts = raw.split('::');
-            if (parts.length < 6) return; // 数据还没准备好
-
-            // 解析数据
-            var year = parts[0].trim();
-            var month = parts[1].trim();
-            var today = parseInt(parts[2]);
-            var startDay = parseInt(parts[3]);
-            var totalDays = parseInt(parts[4]);
-            var dayList = parts[5].replace(/[\r\n]+/g, '').split('|');
-
-            // 生成 HTML
-            var uId = 'c' + Math.random().toString(36).substr(2, 6);
-            var weeks = ['S','M','T','W','T','F','S'];
-            
-            var html = '<div style="padding:15px;text-align:center;font-weight:800;color:#1e293b;background:#f8fafc;border-bottom:1px solid #f1f5f9">' + year + '年 ' + month + '月</div>';
-            html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;padding:10px 0;font-size:10px;color:#94a3b8;font-weight:bold">' + 
-                    weeks.map(w => '<span>'+w+'</span>').join('') + '</div>';
-            html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 12px 15px 12px">';
-
-            for (var i = 0; i < startDay; i++) html += '<div></div>';
-
-            for (var d = 1; d <= totalDays; d++) {
-                var dayData = (dayList[d-1] || '^^^^').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-                var isToday = (d === today);
-                var isFuture = (d > today);
-                var bg = isToday ? '#3b82f6' : (isFuture ? '#fff' : '#f1f5f9');
-                var col = isToday ? '#fff' : (isFuture ? '#cbd5e1' : '#475569');
-                var border = isFuture ? '1px dashed #e2e8f0' : '1px solid transparent';
-                var shadow = isToday ? '0 4px 10px rgba(59,130,246,0.3)' : 'none';
-
-                html += '<div class="'+uId+'-btn" data-day="'+d+'" data-info="'+dayData+'" ' +
-                    'style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:'+bg+';color:'+col+';border:'+border+';box-shadow:'+shadow+';transition:0.2s;">' + d + '</div>';
-            }
-            html += '</div>';
-            html += '<div id="'+uId+'-panel" style="display:none;position:absolute;bottom:0;left:0;right:0;background:rgba(255,255,255,0.98);backdrop-filter:blur(5px);padding:15px;border-top:1px solid #e2e8f0;border-radius:0 0 16px 16px;box-shadow:0 -4px 20px rgba(0,0,0,0.05);animation:slideUp 0.2s;"></div>';
-
-            viewEl.innerHTML = html;
-
-            // 绑定点击事件
-            setTimeout(function() {
-                var btns = root.querySelectorAll('.' + uId + '-btn');
-                var panel = root.querySelector('#' + uId + '-panel');
-                
-                btns.forEach(function(btn) {
-                    btn.onclick = function() {
-                        btns.forEach(function(b) { b.style.transform = 'scale(1)'; });
-                        this.style.transform = 'scale(1.1)';
-
-                        var day = this.getAttribute('data-day');
-                        var info = this.getAttribute('data-info').split('^');
-                        var isFut = (parseInt(day) > today);
-                        
-                        var formatList = function(str, icon) {
-                            if(!str || str.trim() === '') return '<div style="color:#cbd5e1;font-size:11px;font-style:italic">空空如也</div>';
-                            return str.split('&').map(function(s) { return '<div style="margin-bottom:2px"><span style="margin-right:4px">'+icon+'</span>'+s+'</div>' }).join('');
-                        };
-
-                        panel.innerHTML = 
-                            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-weight:bold;color:#334155">' +
-                                '<span>'+month+'月'+day+'日 <span style="font-size:11px;font-weight:normal;color:#64748b;margin-left:5px">'+(info[4]||'')+' '+(info[2]||'')+'</span></span>' +
-                                '<span style="cursor:pointer;padding:0 5px;color:#94a3b8" class="close-btn">✕</span>' +
-                            '</div>' +
-                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;font-size:11px;color:#475569">' +
-                                '<div style="background:#f8fafc;padding:8px;border-radius:6px"><div style="color:#1e293b;font-weight:bold;margin-bottom:4px">'+(isFut?'📅 计划':'✅ 完成')+'</div>'+formatList(info[0], '▫️')+'</div>' +
-                                '<div style="background:#f8fafc;padding:8px;border-radius:6px"><div style="color:#1e293b;font-weight:bold;margin-bottom:4px">✨ 碎片</div>'+formatList(info[1], '▫️')+'</div>' +
-                            '</div>' +
-                            '<div style="font-size:11px;color:#334155;background:#f0f9ff;padding:8px;border-radius:6px;border-left:3px solid #3b82f6;line-height:1.4">' + (info[3] || '无日记记录') + '</div>';
-                        
-                        panel.querySelector('.close-btn').onclick = function() { panel.style.display = 'none'; };
-                        panel.style.display = 'block';
-                    };
-                });
-            }, 0);
-
-            // 成功后移除标记，避免重复处理
-            root.classList.remove('pending-init');
-            root.classList.add('init-done');
-
-        } catch (e) {
-            console.error("日历渲染出错", e);
-            viewEl.innerHTML = '<div style="color:red">渲染错误: ' + e.message + '</div>';
-        }
-    }
-
-    // 设置巡逻队：每 500 毫秒检查一次页面上有没有新的待办日历
-    setInterval(function() {
-        var pendingWidgets = document.querySelectorAll('.cal-v5-wrapper.pending-init');
-        pendingWidgets.forEach(function(widget) {
-            renderCalendar(widget);
-        });
-    }, 500);
-
-})();
-// ===============================================================
-// END: 日历全局驱动器
-// ===============================================================
-
             setupChatSettings();
             setupApiSettingsApp();
             setupStickerSystem();
@@ -423,9 +345,10 @@ if (db.characters.some(c => c.userDiaries && c.userDiaries.length > 0)) {
     } // --- 在这里添加这一行 ---
             setupMusicPlayer();
             setupNotificationSystem();
-            setupMomentsEventListeners();
+            if (window.dynamicsHandler && typeof window.dynamicsHandler.setupListeners === 'function') {
+                window.dynamicsHandler.setupListeners();
+            }
 setupTrajectoryAndHeartSoundSystem();
-  setupAiPovApp();
   setupWalletApp(); // <-- 添加这一行
   // (在 init() 函数的末尾添加)
 setupBlockFeature(); 
@@ -438,6 +361,9 @@ setupMallApp();
 setupPaymentHistoryActions();
 setupAiSpaceApps(); // 初始化AI空间所有App
 window.SoulBondManager.setup();
+if (window.soulBondMissYou && typeof window.soulBondMissYou.init === 'function') {
+    window.soulBondMissYou.init();
+}
 setupSearchInChat();
 
 };
@@ -739,6 +665,7 @@ async function createCharacterFromCard(cardData, avatarUrl) {
                 if (chatItem) {
                     currentChatId = chatItem.dataset.id;
                     currentChatType = chatItem.dataset.type;
+                    window.syncAppState();
                     openChatRoom(currentChatId, currentChatType);
                 }
             });
@@ -905,57 +832,69 @@ async function createCharacterFromCard(cardData, avatarUrl) {
                 const lastMsgTimeB = b.history && b.history.length > 0 ? b.history[b.history.length - 1].timestamp : 0;
                 return lastMsgTimeB - lastMsgTimeA;
             });
-            // ▼▼▼ 性能优化：在循环外获取一次伴侣名册 ▼▼▼
-            const roster = updateBondRoster(null, 'get');
-            // ▲▲▲ 性能优化结束 ▲▲▲
             sortedChats.forEach(chat => {
                 let lastMessageText = '开始聊天吧...';
                 if (chat.history && chat.history.length > 0) {
-                const invisibleRegex = /\[[\s\S]*?(?:接收|退回)[\s\S]*?的转账\]|\[[\s\S]*?更新状态为：[\s\S]*?\]|\[[\s\S]*?已接收礼物\]|\[system:[\s\S]*?\]|\[system-context-only:[\s\S]*?\]|\[[\s\S]*?邀请[\s\S]*?加入了群聊\]|\[[\s\S]*?修改群名为：[\s\S]*?\]|\[system-display:[\s\S]*?\]/;
-                    const visibleHistory = chat.history.filter(msg => !invisibleRegex.test(msg.content));
+                const visibleHistory = chat.history.filter(msg => {
+                        const content = msg.content || '';
+                        if (content.includes('[system:') || content.includes('[system-context-only:')) return false;
+                        if (content.includes('更新状态为')) return false;
+                        if (content.includes('已接收礼物')) return false;
+                        if (content.includes('的转账') && (content.includes('接收') || content.includes('退回'))) return false;
+                        if (content.includes('邀请') && content.includes('加入了群聊')) return false;
+                        if (content.includes('修改群名为')) return false;
+                        if (content.includes('[system-display:')) return false;
+                        return true;
+                    });
                     if (visibleHistory.length > 0) {
                         const lastMsg = visibleHistory[visibleHistory.length - 1];
-                        const urlRegex = /^(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)|data:image\/[a-z]+;base64,)/i;
-                        const imageRecogRegex = /\[.*?发来了一张图片：\]/
-                        const voiceRegex = /\[.*?的语音：.*?\]/;
-                        const photoVideoRegex = /\[.*?发来的照片\/视频：.*?\]/;
-                        const transferRegex = /\[.*?的转账：.*?元.*?\]|\[.*?给你转账：.*?元.*?\]|\[.*?向.*?转账：.*?元.*?\]/;
-                        const stickerRegex = /\[.*?的表情包：.*?\]|\[.*?发送的表情包：.*?\]/;
-                        const giftRegex = /\[.*?送来的礼物：.*?\]|\[.*?向.*?送来了礼物：.*?\]/;
+                        const content = lastMsg.content || '';
+                        const hasImagePart = Array.isArray(lastMsg.parts) && lastMsg.parts.some(p => p.type === 'image');
+                        const hasHtmlPart = Array.isArray(lastMsg.parts) && lastMsg.parts.some(p => p.type === 'html');
+                        const lowerText = content.trim().toLowerCase();
+                        const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+                        const isImageUrl = (lowerText.startsWith('http://') || lowerText.startsWith('https://') || lowerText.startsWith('data:image/')) && imageExts.some(ext => lowerText.endsWith(ext));
 
-
-
-                        if (giftRegex.test(lastMsg.content)) {
+                        if (content.includes('送来的礼物') || content.includes('送来了礼物')) {
                             lastMessageText = '[礼物]';
-                        } else if (stickerRegex.test(lastMsg.content)) {
+                        } else if (content.includes('表情包')) {
                             lastMessageText = '[表情包]';
-                        } else if (voiceRegex.test(lastMsg.content)) {
+                        } else if (content.includes('的语音')) {
                             lastMessageText = '[语音]';
-                        } else if (photoVideoRegex.test(lastMsg.content)) {
+                        } else if (content.includes('照片/视频')) {
                             lastMessageText = '[照片/视频]';
-                        } else if (transferRegex.test(lastMsg.content)) {
+                        } else if (content.includes('转账')) {
                             lastMessageText = '[转账]';
-                        } else if (imageRecogRegex.test(lastMsg.content) || (lastMsg.parts && lastMsg.parts.some(p => p.type === 'image'))) {
+                        } else if (hasImagePart || isImageUrl) {
                             lastMessageText = '[图片]';
-                        }else if ((lastMsg.parts && lastMsg.parts.some(p => p.type === 'html'))) {
+                        } else if (hasHtmlPart) {
                             lastMessageText = '[互动]';
                         } else {
-                            const textMatch = lastMsg.content.match(/\[.*?的消息：([\s\S]+)\]/);
-                            let text = textMatch ? textMatch[1].trim() : lastMsg.content.trim();
-                            lastMessageText = urlRegex.test(text) ? '[图片]' : text;
+                            let text = content.trim();
+                            if (text.startsWith('[') && text.endsWith(']') && text.includes('的消息：')) {
+                                const marker = '的消息：';
+                                const idx = text.indexOf(marker);
+                                if (idx !== -1) {
+                                    text = text.slice(idx + marker.length, text.length - 1).trim();
+                                }
+                            }
+                            const lowered = text.toLowerCase();
+                            const isImageText = (lowered.startsWith('http://') || lowered.startsWith('https://') || lowered.startsWith('data:image/')) && imageExts.some(ext => lowered.endsWith(ext));
+                            lastMessageText = isImageText ? '[图片]' : text;
                         }
                     } else {
                         const lastEverMsg = chat.history[chat.history.length - 1];
-                        const inviteRegex = /\[(.*?)邀请(.*?)加入了群聊\]/;
-                        const renameRegex = /\[.*?修改群名为：.*?\]/;
-                        const timeSkipRegex = /\[system-display:([\s\S]+?)\]/;
-                        const timeSkipMatch = lastEverMsg.content.match(timeSkipRegex);
-
-                        if (timeSkipMatch) {
-                            lastMessageText = timeSkipMatch[1];
-                        } else if (inviteRegex.test(lastEverMsg.content)) {
+                        const content = lastEverMsg.content || '';
+                        if (content.includes('[system-display:')) {
+                            const marker = '[system-display:';
+                            const start = content.indexOf(marker);
+                            const end = content.lastIndexOf(']');
+                            if (start !== -1 && end !== -1 && end > start + marker.length) {
+                                lastMessageText = content.slice(start + marker.length, end);
+                            }
+                        } else if (content.includes('邀请') && content.includes('加入了群聊')) {
                             lastMessageText = '新成员加入了群聊';
-                        } else if (renameRegex.test(lastEverMsg.content)) {
+                        } else if (content.includes('修改群名为')) {
                             lastMessageText = '群聊名称已修改';
                         }
                     }
@@ -967,22 +906,7 @@ async function createCharacterFromCard(cardData, avatarUrl) {
                 li.dataset.type = chat.type;
                 const avatarClass = chat.type === 'group' ? 'group-avatar' : '';
                 const itemName = chat.type === 'private' ? chat.remarkName : chat.name;
-                    // ▼▼▼ 核心修改 1：使用新的SVG图标 ▼▼▼
-        let soulBondIconHTML = '';
-        if (chat.type === 'private') {
-            // ▼▼▼ UI显示修复：显示所有已绑定的伴侣（包括休眠状态）▼▼▼
-            // 只要角色ID在名册里，或者状态为 active，都显示爱心
-            if (roster.includes(chat.id) || chat.soulBondStatus === 'active') {
-                soulBondIconHTML = `
-                    <span class="soul-bond-icon" data-char-id="${chat.id}" title="解除心动关系">
-                        <svg class="soul-bond-icon-svg" viewBox="0 0 24 24">
-                            <path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z"></path>
-                        </svg>
-                    </span>`;
-            }
-            // ▲▲▲ UI显示修复结束 ▲▲▲
-        }
-        // ▲▲▲ 修改结束 ▲▲▲
+        const soulBondIconHTML = window.soulBondManager ? window.soulBondManager.getChatListIconHTML(chat) : '';
                 const pinBadgeHTML = chat.isPinned ? '<span class="pin-badge">置顶</span>' : '';
                 // ▼▼▼ 核心修改 2：在HTML结构中插入图标 ▼▼▼
         li.innerHTML = `
@@ -1000,41 +924,10 @@ async function createCharacterFromCard(cardData, avatarUrl) {
         // ▲▲▲ 修改结束 ▲▲▲
                 chatListContainer.appendChild(li);
             });
-      document.querySelectorAll('.soul-bond-icon').forEach(icon => {
-        icon.style.cursor = 'pointer';
-        icon.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            
-            const charId = e.currentTarget.dataset.charId;
-            const character = db.characters.find(c => c.id === charId);
-            if (!character) return;
-            
-            if (confirm(`你确定要与 ${character.remarkName} 解除心动关系吗？`)) {
-                // 从伴侣名册中移除
-                updateBondRoster(charId, 'remove');
-                
-                // 更新角色状态
-                character.isSoulBound = false;
-                character.soulBondStatus = 'none';
-
-                // 创建并注入一条通知AI的系统消息
-                const systemContent = `[system: ${character.myName} 已与你解除心动关系。]`;
-                const contextMessage = {
-                    id: `msg_unbond_ctx_${Date.now()}`,
-                    role: 'user',
-                    content: systemContent,
-                    parts: [{ type: 'text', text: systemContent }],
-                    timestamp: Date.now()
-                };
-                character.history.push(contextMessage);
-
-                // 保存所有更改
-                await saveData();
-                
-                // 刷新UI并提示用户
-                renderChatList();
-                showToast('心动关系已解除');
-            }
+    document.querySelectorAll('.soul-bond-icon').forEach(icon => {
+        icon.addEventListener('click', (e) => {
+            const chatId = icon.getAttribute('data-char-id');
+            window.soulBondManager.handleIconClick(e, chatId);
         });
     });
     // ▲▲▲ 修改结束 ▲▲▲
@@ -1164,6 +1057,10 @@ function setupChatRoom() {
         wechatGetReplyBtn.addEventListener('click', getAiReply);
     }
 
+    const displayLocationMain = document.getElementById('display-location-main');
+    const displayLocationDetail = document.getElementById('display-location-detail');
+    const displayLocationModal = document.getElementById('display-location-modal');
+
     // --- 统一处理 messageArea 上的所有点击事件 ---
     messageArea.addEventListener('click', async (e) => {
         // 1. 截图模式下的点击逻辑 (最高优先级)
@@ -1222,9 +1119,9 @@ function setupChatRoom() {
         
         const locationCard = e.target.closest('.location-card');
         if (locationCard) {
-            displayLocationMain.textContent = locationCard.dataset.locationMain;
-            displayLocationDetail.textContent = locationCard.dataset.locationDetail;
-            displayLocationModal.classList.add('visible');
+            if (displayLocationMain) displayLocationMain.textContent = locationCard.dataset.locationMain;
+            if (displayLocationDetail) displayLocationDetail.textContent = locationCard.dataset.locationDetail;
+            if (displayLocationModal) displayLocationModal.classList.add('visible');
         }
 
         const musicPlayBtn = e.target.closest('.music-card-play-btn');
@@ -1277,45 +1174,6 @@ function setupChatRoom() {
             return;
         }
         
-        // --- 核心修复：更宽容的转账点击逻辑 ---
-        const transferCard = e.target.closest('.transfer-card.received-transfer');
-        if (transferCard && currentChatType === 'private') {
-            const wrapper = transferCard.closest('.message-wrapper');
-            const messageId = wrapper.dataset.id;
-            const chat = db.characters.find(c => c.id === currentChatId);
-            const message = chat ? chat.history.find(m => m.id === messageId) : null;
-            
-            if (message) {
-                // 修复逻辑：只要状态不是“已接收”或“已退回”，就默认允许点击处理（视为 pending）
-                if (message.transferStatus !== 'received' && message.transferStatus !== 'returned') {
-                    handleReceivedTransferClick(message.id);
-                }
-            }
-        }
-        // --- 修复结束 ---
-
-        // 心动绑定按钮点击
-        const bondAcceptBtn = e.target.closest('.bond-accept-btn');
-        if (bondAcceptBtn) {
-            const messageId = bondAcceptBtn.closest('.message-wrapper').dataset.id;
-            handleBondRequestResponse(messageId, 'accepted');
-        }
-        const bondDeclineBtn = e.target.closest('.bond-decline-btn');
-        if (bondDeclineBtn) {
-            const messageId = bondDeclineBtn.closest('.message-wrapper').dataset.id;
-            handleBondRequestResponse(messageId, 'declined');
-        }
-
-        // 代付按钮点击
-        const acceptBtn = e.target.closest('.payment-request-accept');
-        const declineBtn = e.target.closest('.payment-request-decline');
-        const messageWrapper = e.target.closest('.message-wrapper');
-        if (messageWrapper && (acceptBtn || declineBtn)) {
-            const messageId = messageWrapper.dataset.id;
-            const decision = acceptBtn ? 'paid' : 'declined';
-            handleAiPaymentDecision(messageId, decision);
-        }
-
         // 撤回消息点击
         const placeholder = e.target.closest('.recalled-message-placeholder');
         if (placeholder) {
@@ -1424,68 +1282,6 @@ function setupChatRoom() {
     }
 }
 
-// === 新增：处理用户对绑定邀请的回应 ===
-async function handleBondRequestResponse(messageId, response) {
-    const character = db.characters.find(c => c.id === currentChatId);
-    if (!character) return;
-
-    const message = character.history.find(m => m.id === messageId);
-    if (!message || !message.bondRequestData || message.bondRequestData.status !== 'pending') return;
-
-    // 1. 更新卡片状态
-    message.bondRequestData.status = response;
-
-    // 2. 更新角色的心动状态
-    if (response === 'accepted') {
-        // 使用伴侣名册管理机制
-        const roster = updateBondRoster(character.id, 'add');
-        
-        if (roster.length === 2) {
-            // 如果名册已满（2个角色），找到另一个角色并休眠
-            const otherCharId = roster.find(id => id !== character.id);
-            const otherCharacter = db.characters.find(c => c.id === otherCharId);
-            if (otherCharacter) {
-                otherCharacter.isSoulBound = false; // 休眠，但保留 soulBondStatus 为 'active'
-                // 注意：我们不改变 otherCharacter.soulBondStatus，保持为 'active'
-            }
-        } else {
-            // 如果名册未满，将所有其他角色解绑（清除绑定状态）
-            db.characters.forEach(c => {
-                if (c.id !== character.id) {
-                    c.isSoulBound = false;
-                    c.soulBondStatus = 'none';
-                }
-            });
-        }
-        
-        // 绑定当前AI
-        character.isSoulBound = true;
-        character.soulBondStatus = 'active';
-        showToast(`你与 ${character.remarkName} 已成功绑定！`);
-    } else {
-        character.soulBondStatus = 'none';
-        showToast('你拒绝了邀请');
-    }
-    
-    // 3. 注入一条系统消息，告知AI你的决定
-    const systemContent = `[system: 我${response === 'accepted' ? '同意' : '拒绝'}了你的心动绑定请求。]`;
-    const contextMessage = {
-        id: `msg_bond_resp_ctx_${Date.now()}`,
-        role: 'user',
-        content: systemContent,
-        parts: [{ type: 'text', text: systemContent }],
-        timestamp: Date.now()
-    };
-    character.history.push(contextMessage);
-
-    await saveData();
-
-    // 4. 刷新UI并触发AI的后续反应
-    renderMessages(false, true);
-    renderChatList(); // 刷新聊天列表以显示（或移除）爱心
-    getAiReply();
-}
-
         function handleMessageLongPress(messageWrapper, x, y) {
             if (isInMultiSelectMode) return;
             clearTimeout(longPressTimer);
@@ -1519,7 +1315,7 @@ async function handleBondRequestResponse(messageId, response) {
                     chat.history[msgIndex].originalContent = chat.history[msgIndex].content;
                     
                     await saveData();
-                    renderMessages(false, true); // 重新渲染，让消息变成占位符
+                    window.chatUiCore.renderMessages(false, true); // 重新渲染，让消息变成占位符
                 }
             }
         });
@@ -1592,8 +1388,8 @@ menuItems.push({
             }
 
             await saveData();
-            currentPage = 1;
-            renderMessages(false, true);
+            window.chatUiCoreState.currentPage = 1;
+            window.chatUiCore.renderMessages(false, true);
             renderChatList();
             
             cancelMessageEdit();
@@ -1654,8 +1450,8 @@ menuItems.push({
             const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
             chat.history = chat.history.filter(m => !selectedMessageIds.has(m.id));
             await saveData();
-            currentPage = 1;
-            renderMessages(false, true);
+            window.chatUiCoreState.currentPage = 1;
+            window.chatUiCore.renderMessages(false, true);
             renderChatList();
             exitMultiSelectMode();
             showToast(`已删除 ${deletedCount} 条消息`);
@@ -1688,15 +1484,15 @@ menuItems.push({
                 const messageIndex = chat.history.findIndex(m => m.id === targetId);
                 if (messageIndex > -1) {
                     const page = Math.floor((chat.history.length - 1 - messageIndex) / MESSAGES_PER_PAGE) + 1;
-                    currentPage = page;
+                    window.chatUiCoreState.currentPage = page;
                     window.targetMessageIdForHighlight = targetId;
                 } else {
-                    currentPage = 1; 
+                    window.chatUiCoreState.currentPage = 1; 
                     showToast('无法在历史记录中定位到该消息');
                 }
                 window.targetMessageId = null; 
             } else {
-                currentPage = 1;
+                window.chatUiCoreState.currentPage = 1;
             }
 
             const voiceCallBtn = document.getElementById('voice-call-btn');
@@ -1740,7 +1536,7 @@ menuItems.push({
             switchScreen('chat-room-screen');
             
             setTimeout(() => {
-                renderMessages(false, !window.targetMessageIdForHighlight);
+                window.chatUiCore.renderMessages(false, !window.targetMessageIdForHighlight);
                 // 更新 Token 统计按钮
                 if (typeof updateTokenStatsButton === 'function') {
                     updateTokenStatsButton();
@@ -1752,619 +1548,10 @@ menuItems.push({
 // --- 新代码结束 ---
 // --- 新代码结束 ---
 
-function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
-            const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-            if (!chat || !chat.history) return;
-
-            // ▼▼▼ 在函数开头，读取并消费高亮标记 ▼▼▼
-            const targetIdToHighlight = window.targetMessageIdForHighlight;
-            window.targetMessageIdForHighlight = null; // 消费掉这个ID，防止下次渲染时重复执行
-
-            const oldScrollHeight = messageArea.scrollHeight;
-            const totalMessages = chat.history.length;
-            const end = totalMessages - (currentPage - 1) * MESSAGES_PER_PAGE;
-            const start = Math.max(0, end - MESSAGES_PER_PAGE);
-            const messagesToRender = chat.history.slice(start, end);
-
-            if (!isLoadMore) messageArea.innerHTML = '';
-            
-            const fragment = document.createDocumentFragment();
-            messagesToRender.forEach(msg => {
-                const bubble = createMessageBubbleElement(msg);
-                if (bubble) fragment.appendChild(bubble);
-            });
-            
-            const existingLoadBtn = document.getElementById('load-more-btn');
-            if (existingLoadBtn) existingLoadBtn.remove();
-            
-            messageArea.prepend(fragment);
-            
-            if (totalMessages > currentPage * MESSAGES_PER_PAGE) {
-                const loadMoreButton = document.createElement('button');
-                loadMoreButton.id = 'load-more-btn';
-                loadMoreButton.className = 'load-more-btn';
-                loadMoreButton.textContent = '加载更早的消息';
-                messageArea.prepend(loadMoreButton);
-            }
-
-            // ▼▼▼ 新增/修改的高亮与滚动逻辑 ▼▼▼
-            if (targetIdToHighlight) {
-                // 如果是从搜索跳转而来
-                setTimeout(() => { // 使用setTimeout确保DOM更新完毕
-                    const targetElement = messageArea.querySelector(`.message-wrapper[data-id="${targetIdToHighlight}"]`);
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        targetElement.classList.add('message-highlight');
-                        // 2秒后移除高亮效果
-                        setTimeout(() => {
-                            targetElement.classList.remove('message-highlight');
-                        }, 2000); 
-                    }
-                }, 100); // 延迟100毫秒等待渲染
-            } else if (forceScrollToBottom) {
-                // 正常打开聊天时，滚动到底部
-                setTimeout(() => {
-                    messageArea.scrollTop = messageArea.scrollHeight;
-                }, 0);
-            } else if (isLoadMore) {
-                // 加载更多时，保持当前视口位置
-                messageArea.scrollTop = messageArea.scrollHeight - oldScrollHeight;
-            }
-            // ▲▲▲ 修改结束 ▲▲▲
+function loadMoreMessages() {
+            window.chatUiCoreState.currentPage += 1;
+            window.chatUiCore.renderMessages(true, false);
         }
-        window.renderMessages = renderMessages;
-        function loadMoreMessages() {
-            currentPage++;
-            renderMessages(true, false);
-        }
-
-        function calculateVoiceDuration(text) {
-            return Math.max(1, Math.min(60, Math.ceil(text.length / 3.5)));
-        }
-
-                                 
-// START: 完整版 createMessageBubbleElement 函数 (替换旧版本)
-// START: 最终版 createMessageBubbleElement 函数 (替换旧版本)
-// ▼▼▼ 【V3.1 | 最终修复版】请用这个函数完整替换旧的 createMessageBubbleElement ▼▼▼
-
-/**
- * 【重构版】根据消息对象创建并返回一个完整的消息气泡DOM元素。
- * @param {object} message - 消息对象
- * @returns {HTMLElement|null} - 创建好的消息包装器元素，或在不需渲染时返回null
- */
-// START: 完美修复版 createMessageBubbleElement (表情包恢复原样，报告图片受限)
-// ▼▼▼ 新增：ID隔离工具 (解决多个小剧场冲突问题) ▼▼▼
-// ▼▼▼ 增强版：ID与Radio隔离工具 (解决剧场互斥、空白问题) ▼▼▼
-function isolateHtmlIds(html, suffix) {
-    if (!html || !suffix) return html;
-    
-    let result = html;
-
-    // --- 1. 隔离 ID (解决样式和JS定位冲突) ---
-    const idMatches = [...html.matchAll(/id=["']([a-zA-Z][\w-]*)["']/g)];
-    const ids = new Set(idMatches.map(m => m[1]));
-    
-    ids.forEach(oldId => {
-        const newId = `${oldId}_${suffix}`;
-        
-        // 1.1 替换 HTML 属性 (id, for, aria-controls, list)
-        // 注意：替换 label 的 for 属性非常重要，否则点击文字没反应
-        result = result.replace(new RegExp(`(id|for|aria-controls|list)=["']${oldId}["']`, 'g'), `$1="${newId}"`);
-        
-        // 1.2 替换 CSS 样式中的 ID 选择器 (#page1 { ... })
-        result = result.replace(new RegExp(`#${oldId}(?![\\w-])`, 'g'), `#${newId}`);
-        
-        // 1.3 替换 JS 代码中的 ID 引用 ('page1', "page1")
-        result = result.replace(new RegExp(`(['"])${oldId}\\1`, 'g'), `$1${newId}$1`);
-        
-        // 1.4 替换 href 锚点链接 (#page1)
-        result = result.replace(new RegExp(`href=["']#${oldId}["']`, 'g'), `href="#${newId}"`);
-    });
-
-    // --- 2. 隔离 Name (核心修复：解决“点一个灭一个”的问题) ---
-    // 专门针对 <input type="radio" name="...">
-    const nameMatches = [...html.matchAll(/name=["']([^"']+)["']/g)];
-    const names = new Set(nameMatches.map(m => m[1]));
-
-    names.forEach(oldName => {
-        const newName = `${oldName}_${suffix}`;
-        // 全局替换该 name，确保这组按钮只在当前剧场内互斥
-        result = result.replace(new RegExp(`name=["']${oldName}["']`, 'g'), `name="${newName}"`);
-    });
-    
-    return result;
-}
-
-function resolveMusicCover(coverValue) {
-    const normalized = typeof coverValue === 'string' ? coverValue.trim() : '';
-    if (!normalized || window.musicCoverPlaceholders.has(normalized)) return window.defaultMusicCoverUrl;
-    return normalized;
-}
-
-function buildMusicCardHtml(songData) {
-    const titleText = ((songData && songData.name) ? songData.name : '').trim();
-    const artistText = ((songData && songData.artist) ? songData.artist : '').trim();
-    const title = escapeHTML(titleText || '未命名歌曲');
-    const artist = escapeHTML(artistText || '未知歌手');
-    const coverRaw = resolveMusicCover(songData && (songData.cover || songData.albumArt));
-    const urlRaw = (songData && songData.url) ? songData.url : '';
-    const cover = escapeHTML(coverRaw);
-    const url = escapeHTML(urlRaw);
-    const fallbackCover = escapeHTML(window.defaultMusicCoverUrl);
-    return `<div class="music-card ai-music-card" data-song-name="${title}" data-song-artist="${artist}" data-song-url="${url}" data-song-cover="${cover}"><img src="${cover}" alt="album cover" class="music-card-icon" onerror="this.src='${fallbackCover}';this.onerror=null;"><div class="music-card-info"><p class="music-card-title">${title}</p><p class="music-card-artist">${artist}</p></div><button class="music-card-play-btn" type="button" aria-label="播放"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></button></div>`;
-}
-
-function parseSongTitleArtist(rawSongText) {
-    const cleaned = String(rawSongText || '').replace(/[《》“”"]/g, '').trim();
-    if (!cleaned) return { title: '', artist: '' };
-    const parts = cleaned.split(/[-–—]/);
-    if (parts.length >= 2) {
-        const title = parts.shift().trim();
-        const artist = parts.join('-').trim();
-        return { title, artist };
-    }
-    return { title: cleaned, artist: '' };
-}
-
-async function renderMusicCardForChat(chat, rawSongText) {
-    if (!chat || !rawSongText) return;
-    const { title, artist } = parseSongTitleArtist(rawSongText);
-    if (!title) return;
-    const placeholderMessage = {
-        id: `msg_music_search_${Date.now()}_${Math.random()}`,
-        role: 'assistant',
-        content: '🎵 正在为你寻找音源...',
-        parts: [{ type: 'text', text: '🎵 正在为你寻找音源...' }],
-        timestamp: Date.now()
-    };
-    chat.history.push(placeholderMessage);
-    const chatScreen = document.getElementById('chat-room-screen');
-    if (currentChatId === chat.id && chatScreen && chatScreen.classList.contains('active')) {
-        if (typeof addMessageBubble === 'function') {
-            addMessageBubble(placeholderMessage);
-        }
-    }
-    let searchResult = null;
-    if (typeof window.searchAndPlaySong === 'function') {
-        try {
-            searchResult = await window.searchAndPlaySong(title, artist, { autoplay: false, forceCloud: true });
-        } catch (e) {
-            searchResult = null;
-        }
-    }
-    const placeholderIndex = chat.history.findIndex(m => m.id === placeholderMessage.id);
-    const wrapper = (typeof messageArea !== 'undefined' && messageArea) ? messageArea.querySelector(`.message-wrapper[data-id="${placeholderMessage.id}"]`) : null;
-    if (!searchResult || !searchResult.song) {
-        if (placeholderIndex !== -1) {
-            chat.history.splice(placeholderIndex, 1);
-        }
-        if (wrapper) wrapper.remove();
-        return;
-    }
-    const song = searchResult.song;
-    const songData = {
-        name: song.name || title,
-        artist: song.artist || artist,
-        url: song.url || '',
-        cover: resolveMusicCover(song.albumArt || song.cover)
-    };
-    if (placeholderIndex !== -1) {
-        const roleName = chat.realName || chat.remarkName || 'AI';
-        const displayText = songData.artist ? `${songData.name} - ${songData.artist}` : songData.name;
-        chat.history[placeholderIndex].content = `[${roleName}分享了音乐：${displayText}]`;
-        chat.history[placeholderIndex].parts = [{ type: 'text', text: chat.history[placeholderIndex].content }];
-        chat.history[placeholderIndex].musicCardData = songData;
-    }
-    if (wrapper) {
-        const bubble = wrapper.querySelector('.message-bubble');
-        if (bubble) {
-            bubble.innerHTML = buildMusicCardHtml(songData);
-        }
-    }
-}
-// ▲▲▲ 工具结束 ▲▲▲
-// ▲▲▲ 工具结束 ▲▲▲
-// START: 防冲突增强版 createMessageBubbleElement (自动隔离小剧场ID)
-// START: 修复版 createMessageBubbleElement (完美修复语音崩溃和转账显示)
-// START: 修复版 createMessageBubbleElement (修复转账无法点击 + 语音防白屏)
-function createMessageBubbleElement(message) {
-    // --- 1. 处理系统消息、撤回消息等特殊类型 ---
-    const updateStatusRegexForRender = /\[.*?更新状态为[:：].*?\]/;
-    if (message.content.startsWith('[system:') || message.content.startsWith('[system-context-only:') || updateStatusRegexForRender.test(message.content)) {
-        return null;
-    }
-
-    if (message.recalled) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'message-wrapper system-notification';
-        wrapper.dataset.id = message.id;
-        const recaller = (message.recalledBy === 'user') ? '你' : '对方';
-        const placeholder = document.createElement('div');
-        placeholder.className = 'recalled-message-placeholder';
-        placeholder.textContent = `${recaller}撤回了一条消息`;
-        placeholder.style.cursor = 'pointer';
-        placeholder.dataset.recalledMessageId = message.id;
-        wrapper.appendChild(placeholder);
-        return wrapper;
-    }
-
-    const timeSkipRegex = /\[system-display:([\s\S]+?)\]/;
-    const inviteRegex = /\[(.*?)邀请(.*?)加入了群聊\]/;
-    const renameRegex = /\[(.*?)修改群名为：(.*?)\]/;
-    const timeSkipMatch = message.content.match(timeSkipRegex);
-    const inviteMatch = message.content.match(inviteRegex);
-    const renameMatch = message.content.match(renameRegex);
-    
-    if (timeSkipMatch || inviteMatch || renameMatch) {
-        const wrapper = document.createElement('div');
-        wrapper.dataset.id = message.id;
-        wrapper.className = 'message-wrapper system-notification';
-        let bubbleText = '';
-        if (timeSkipMatch) bubbleText = timeSkipMatch[1];
-        if (inviteMatch) bubbleText = `${inviteMatch[1]}邀请${inviteMatch[2]}加入了群聊`;
-        if (renameMatch) bubbleText = `${renameMatch[1]}修改群名为“${renameMatch[2]}”`;
-        wrapper.innerHTML = `<div class="system-notification-bubble">${bubbleText}</div>`;
-        return wrapper;
-    }
-
-    // --- 2. 准备渲染所需的基础数据 ---
-    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-    if (!chat) return null;
-
-    const { role, content, timestamp, id, senderId, transferStatus, giftStatus, stickerData } = message;
-    const isSent = (currentChatType === 'group') ? (senderId === 'user_me') : (role === 'user');
-    let avatarUrl, bubbleTheme, senderNickname = '', titleBadgeHTML = '';
-    
-    const themeKey = chat.theme || 'white_pink';
-    const theme = colorThemes[themeKey] || colorThemes['white_pink'];
-    bubbleTheme = isSent ? theme.sent : theme.received;
-
-    if (currentChatType === 'group') {
-        const sender = isSent ? chat.me : chat.members.find(m => m.id === senderId);
-        if (sender) {
-            avatarUrl = sender.avatar;
-            senderNickname = sender.nickname || sender.groupNickname;
-            if (sender.groupTitle) {
-                const badgeClass = getBadgeClassForTitle(sender.groupTitle);
-                titleBadgeHTML = `<span class="group-title-badge ${badgeClass}">${sender.groupTitle}</span>`;
-            }
-        } else {
-            avatarUrl = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
-            senderNickname = '未知成员';
-        }
-    } else {
-        avatarUrl = isSent ? chat.myAvatar : chat.avatar;
-    }
-
-    // --- 3. 渲染核心逻辑 ---
-    let finalContentHTML;
-    let isRenderedByRule = false;
-
-    const rawTextOriginal = content;
-    const renderResult = { isRendered: false, text: rawTextOriginal };
-    if (!isSent && typeof applyAdvancedRenderingRules === 'function') {
-        const renderedHtml = applyAdvancedRenderingRules(rawTextOriginal, currentChatId);
-        if (renderedHtml && renderedHtml !== rawTextOriginal) {
-            renderResult.isRendered = true;
-            renderResult.html = renderedHtml;
-        }
-    }
-
-    // 通用样式
-    const universalStyle = `<style>.ai-generated-theater img, .ai-theater img { max-width: 100% !important; height: auto !important; border-radius: 8px; display: block; margin: 5px 0; } .ai-generated-theater, .ai-theater { width: 100%; overflow-x: hidden; word-wrap: break-word; pointer-events: auto !important; }</style>`;
-
-    if (renderResult.isRendered) {
-        const suffix = (id || Date.now()).toString().slice(-6);
-        finalContentHTML = universalStyle + isolateHtmlIds(renderResult.html, suffix);
-        isRenderedByRule = true;
-    } 
-    else if (content.includes('<div class="ai-theater"') || content.includes('class="ai-generated-theater"')) {
-        const suffix = (id || Date.now()).toString().slice(-6);
-        finalContentHTML = universalStyle + isolateHtmlIds(content, suffix); 
-        isRenderedByRule = true;    
-    }
-    else {
-        // 正则匹配准备
-        const aiQuoteRegex = /\[(?:.*?)引用了“(?:.*?:)?\s?([\s\S]+?)”的消息?并回复：([\s\S]+?)\]/;
-        const musicShareRegex = /\[(?:.*?)分享了音乐：([\s\S]+?) - ([\s\S]+?)\]/;
-        const locationRegex = /\[(.*?)的位置共享：主位置 '(.*?)', 详细位置 '(.*?)'\]|\[(.*?)分享了位置：主位置 '(.*?)', 详细位置 '(.*?)'\]/i;
-        const urlRegex = /^(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)|data:image\/[a-z]+;base64,)/i;
-        const sentStickerRegex = /\[(?:.+?)的表情包：.+?\]/i;
-        const receivedStickerRegex = /\[(?:.+?)发送的表情包：([\s\S]+?)\]/i;
-        const bareImageLinkRegex = /^\[(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg))\]$/i;
-        const voiceRegex = /\[(?:.+?)的语音：([\s\S]+?)\]/;
-        const photoVideoRegex = /\[(?:.+?)发来的照片\/视频：([\s\S]+?)\]/;
-        const privateSentTransferRegex = /\[.*?给你转账：([\d.]+)元；备注：(.*?)\]/;
-        const privateReceivedTransferRegex = /\[.*?的转账：([\d.]+)元；备注：(.*?)\]/;
-        const groupTransferRegex = /\[(.*?)\s*向\s*(.*?)\s*转账：([\d.]+)元；备注：(.*?)\]/;
-        const privateGiftRegex = /\[(?:.+?)送来的礼物：([\s\S]+?)\]/;
-        const groupGiftRegex = /\[(.*?)\s*向\s*(.*?)\s*送来了礼物：([\s\S]+?)\]/; 
-        const imageRecogRegex = /\[.*?发来了一张图片：\]/;
-        // 🆕 放宽正则匹配：支持中英文冒号，允许空格
-        const textRegex = /\[(?:.+?)的消息[:：]\s*([\s\S]+?)\]/;
-        const fileRegex = /\[(?:.+?)发送了文件：(\{[\s\S]*?\})\]/;
-
-        const aiQuoteMatch = content.match(aiQuoteRegex);
-        const musicMatch = content.match(musicShareRegex);
-        const locationMatch = content.match(locationRegex);
-        const sentStickerMatch = content.match(sentStickerRegex);
-        const receivedStickerMatch = content.match(receivedStickerRegex);
-        const bareImageLinkMatch = content.match(bareImageLinkRegex);
-        const voiceMatch = content.match(voiceRegex);
-        const photoVideoMatch = content.match(photoVideoRegex);
-        const privateSentTransferMatch = content.match(privateSentTransferRegex);
-        const privateReceivedTransferMatch = content.match(privateReceivedTransferRegex);
-        const groupTransferMatch = content.match(groupTransferRegex);
-        const privateGiftMatch = content.match(privateGiftRegex);
-        const groupGiftMatch = content.match(groupGiftRegex);
-        const imageRecogMatch = content.match(imageRecogRegex);
-        const textMatch = content.match(textRegex);
-        const fileMatch = content.match(fileRegex);
-        const musicCardData = message.musicCardData;
-
-        if (message.bondRequestData) {
-            // 心动绑定卡片
-            const data = message.bondRequestData;
-            let statusText = '等待回应...';
-            let statusColor = '#888';
-            let actionsHTML = '';
-            if (data.status === 'accepted') { statusText = '✓ 已同意'; statusColor = '#4CAF50'; } 
-            else if (data.status === 'declined') { statusText = '✗ 已拒绝'; statusColor = '#F44336'; } 
-            else { 
-                if (!isSent) { 
-                    actionsHTML = `<div class="bond-request-actions"><button class="btn btn-neutral btn-small bond-decline-btn">再想想</button><button class="btn btn-primary btn-small bond-accept-btn">我愿意</button></div>`;
-                    statusText = ''; 
-                }
-            }
-            finalContentHTML = `<div class="bond-request-card"><p>${isSent ? '你向对方发起了心动绑定邀请' : `${senderNickname} 向你发起了心动绑定邀请`}</p>${actionsHTML}<p class="bond-request-status" style="color: ${statusColor};">${statusText || '&nbsp;'}</p></div>`;
-        
-        } else if (message.quote || aiQuoteMatch) {
-            let quotedSender, quotedText, replyText;
-            if (message.quote) {
-                quotedSender = message.quote.sender;
-                quotedText = message.quote.content;
-                replyText = message.replyText;
-            } else {
-                quotedSender = senderNickname || (currentChatType === 'private' ? chat.remarkName : '群成员');
-                quotedText = aiQuoteMatch[1].trim();
-                replyText = aiQuoteMatch[2].trim();
-            }
-            finalContentHTML = `<div class="quoted-content"><div class="quoted-sender">${quotedSender}</div><div class="quoted-text">${quotedText}</div></div><div class="reply-text">${replyText}</div>`;
-        
-        } else if (musicCardData) {
-            finalContentHTML = buildMusicCardHtml(musicCardData);
-        
-        } else if (musicMatch) {
-            finalContentHTML = buildMusicCardHtml({ name: musicMatch[1].trim(), artist: musicMatch[2].trim() });
-        
-        } else if (message.callRecordData) {
-            const { duration, timestamp, id: callLogId, title } = message.callRecordData;
-            // Use callLogId (which links to db.callLogs)
-            finalContentHTML = `
-            <div class="file-card call-record-card" onclick="showCallDetail('${callLogId}')" style="cursor: pointer;">
-                <div class="file-card-icon-container" style="background: #e3f2fd; padding: 10px; border-radius: 8px;">
-                    <svg viewBox="0 0 24 24" fill="currentColor" style="width: 24px; height: 24px; color: #2196f3;">
-                        <path d="M20,15.5C18.75,15.5 17.55,15.3 16.43,14.93C16.08,14.82 15.69,14.9 15.41,15.18L13.21,17.38C10.38,15.94 8.06,13.62 6.62,10.79L8.82,8.59C9.1,8.31 9.18,7.92 9.07,7.57C8.7,6.45 8.5,5.25 8.5,4A1,1 0 0,0 7.5,3H4A1,1 0 0,0 3,4A17,17 0 0,0 20,21A1,1 0 0,0 21,20V16.5A1,1 0 0,0 20,15.5M19,12H21C21,7 17,3 12,3V5C15.86,5 19,8.13 19,12Z" />
-                    </svg>
-                </div>
-                <div class="file-card-info">
-                    <p class="file-card-name">${title || '通话记录'}</p>
-                    <p class="file-card-size">时长: ${duration}</p>
-                </div>
-            </div>`;
-        
-        } else if (message.deliveryData) {
-            finalContentHTML = `<div class="product-delivery-card"><img src="${message.deliveryData.productImage}" alt="商品" class="product-delivery-card-icon"><div class="product-delivery-card-info"><p class="product-delivery-card-title">${message.deliveryData.productName}</p><p class="delivery-countdown-display" data-countdown-type="delivery" data-eta="${message.deliveryData.eta}"></p></div></div>`;
-        
-        } else if (message.paymentRequestData) {
-            // 代付卡片
-            const data = message.paymentRequestData;
-            let actionsHTML = '';
-            let statusText = '';
-            if (data.status === 'pending' && isSent) { statusText = `<p class="payment-request-status">等待对方付款...</p>`; } 
-            else if (data.status === 'pending' && !isSent) {
-                actionsHTML = `<div class="payment-request-actions"><button class="btn btn-neutral btn-small payment-request-decline">残忍拒绝</button><button class="btn btn-primary btn-small payment-request-accept">为Ta付款</button></div>`;
-            } else if (data.status === 'paid') { statusText = `<p class="payment-request-status" style="color: #4CAF50;">✓ 已支付</p>`; } 
-            else if (data.status === 'declined') { statusText = `<p class="payment-request-status" style="color: #F44336;">✗ 已拒绝</p>`; }
-            finalContentHTML = `<div class="payment-request-card"><p class="payment-request-title">${data.requesterName} 发起的代付</p><p class="payment-request-amount">¥${data.amount.toFixed(2)}</p><p class="payment-request-desc">${data.items.map(i => i.name).join(', ')}</p>${actionsHTML}${statusText}</div>`;
-        
-        } else if (message.fileData && message.fileData.name) {
-            const fileSize = formatFileSize(new Blob([message.fileData.content]).size);
-            finalContentHTML = `<div class="file-card" data-file-name="${escapeHTML(message.fileData.name)}" data-file-content="${escapeHTML(message.fileData.content)}"><img src="https://i.postimg.cc/vms1Vd9X/1040g2sg31hh9ub1v3oeg5pbsckvn39vt3mbflao.png" alt="file icon" class="file-card-icon"><div class="file-card-info"><p class="file-card-name">${escapeHTML(message.fileData.name)}</p><p class="file-card-size">${fileSize}</p></div></div>`;
-        
-        } else if (fileMatch) {
-            let fileName = '未命名文件.txt', fileContent = '', parseSuccess = false;
-            const rawJson = fileMatch[1];
-            try { let cleanJson = rawJson.replace(/[\u201C\u201D]/g, '"').replace(/'/g, '"').replace(/(?:\r\n|\r|\n)/g, '\\n'); const fileData = JSON.parse(cleanJson); if (fileData) { fileName = fileData.name || fileName; fileContent = fileData.content || ''; parseSuccess = true; } } catch (e) {}
-            if (!parseSuccess) { try { const nameMatch = rawJson.match(/name["']?\s*[:：]\s*["']([^"']+)["']/i); if (nameMatch) fileName = nameMatch[1]; const contentMatch = rawJson.match(/content["']?\s*[:：]\s*["']([\s\S]*?)["']\s*(?:,|}|\])/i); if (contentMatch) { fileContent = contentMatch[1]; parseSuccess = true; } } catch (e2) {} }
-            if (parseSuccess || fileContent.length > 0) {
-                const fileSize = formatFileSize(new Blob([fileContent]).size);
-                finalContentHTML = `<div class="file-card" data-file-name="${escapeHTML(fileName)}" data-file-content="${escapeHTML(fileContent)}"><img src="https://i.postimg.cc/vms1Vd9X/1040g2sg31hh9ub1v3oeg5pbsckvn39vt3mbflao.png" alt="file icon" class="file-card-icon"><div class="file-card-info"><p class="file-card-name">${escapeHTML(fileName)}</p><p class="file-card-size">${fileSize}</p></div></div>`;
-            } else { finalContentHTML = `<div class="system-notification-bubble">文件生成格式有误，无法显示</div>`; }
-        
-        } else if (message.locationData || locationMatch) {
-            let mainLoc, detailLoc;
-            if (message.locationData) { mainLoc = message.locationData.main; detailLoc = message.locationData.detail; } 
-            else { mainLoc = locationMatch[2] || locationMatch[5]; detailLoc = locationMatch[3] || locationMatch[6]; }
-            finalContentHTML = `<div class="location-card" data-location-main="${escapeHTML(mainLoc)}" data-location-detail="${escapeHTML(detailLoc)}"><div class="location-card-info"><p class="location-main">${escapeHTML(mainLoc)}</p><p class="location-detail">${escapeHTML(detailLoc)}</p></div><div class="location-map"></div></div>`;
-        
-        } else if ((isSent && sentStickerMatch) || (!isSent && receivedStickerMatch)) {
-            let stickerSrc = null, stickerName = '';
-            if (isSent) {
-                stickerSrc = stickerData; 
-                const match = content.match(/\[.*?的表情包：(.*?)\]/);
-                if (match) stickerName = match[1];
-            } else { 
-                stickerName = receivedStickerMatch[1].trim();
-                const sticker = db.myStickers.find(s => s.name === stickerName);
-                if (sticker) { stickerSrc = sticker.data; } 
-                else {
-                    const urlMatch = stickerName.match(/https?:\/\/[^\s\])]+/);
-                    if (urlMatch) { stickerSrc = urlMatch[0]; } 
-                    else { const pathExtractionRegex = /[a-zA-Z0-9]+\/.*$/; const extractedPathMatch = stickerName.match(pathExtractionRegex); const finalPath = extractedPathMatch ? extractedPathMatch[0] : stickerName; stickerSrc = `https://i.postimg.cc/${finalPath}`; }
-                }
-            }
-            if (stickerSrc) { finalContentHTML = `<div class="image-bubble"><img src="${stickerSrc}" alt="表情包: ${escapeHTML(stickerName)}"></div>`; } 
-            else { finalContentHTML = escapeHTML(`[表情包：${stickerName}]`); }
-        
-        } else if (!isSent && bareImageLinkMatch) {
-            finalContentHTML = `<div class="image-bubble"><img src="${bareImageLinkMatch[1]}" alt="表情包"></div>`;
-        
-        } else if (privateGiftMatch || groupGiftMatch) {
-            const match = privateGiftMatch || groupGiftMatch;
-            const description = groupGiftMatch ? groupGiftMatch[3].trim() : match[1].trim();
-            let giftText;
-            if (groupGiftMatch) { const from = groupGiftMatch[1]; const to = groupGiftMatch[2]; giftText = isSent ? `你送给 ${to} 的礼物` : `${from} 送给 ${to} 的礼物`; } 
-            else { giftText = '您有一份礼物～'; }
-            finalContentHTML = `<div class="gift-card ${giftStatus === 'received' ? 'received' : ''}"><img src="https://i.postimg.cc/rp0Yg31K/chan-75.png" alt="gift" class="gift-card-icon"><div class="gift-card-text">${giftText}</div><div class="gift-card-received-stamp">已查收</div></div><div class="gift-card-description">${description}</div>`;
-        
-        } else if (voiceMatch) {
-            const duration = calculateVoiceDuration(voiceMatch[1].trim());
-
-            finalContentHTML = `
-                <div class="voice-bubble" style="background-color: ${bubbleTheme.bg}; color: ${bubbleTheme.text};">
-                    <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
-                    <span class="duration">${duration}"</span>
-                </div>
-                <div class="voice-transcript">${voiceMatch[1].trim()}</div>`;
-
-
-        } else if (privateSentTransferMatch || privateReceivedTransferMatch || groupTransferMatch) {
-            let amount, remarkText, titleText, statusText, cardClass;
-            
-            // --- 核心修复：转账卡片样式逻辑 ---
-            if (groupTransferMatch) {
-                const from = groupTransferMatch[1]; const to = groupTransferMatch[2]; amount = parseFloat(groupTransferMatch[3]).toFixed(2); remarkText = groupTransferMatch[4] || ''; titleText = isSent ? `向 ${to} 转账` : `${from} 向你转账`; cardClass = isSent ? 'sent-transfer' : 'received-transfer'; statusText = '待查收'; 
-            } 
-            else if (privateSentTransferMatch) {
-                amount = parseFloat(privateSentTransferMatch[1]).toFixed(2); 
-                remarkText = privateSentTransferMatch[2] || ''; 
-                
-                // 修复：如果是我发的(isSent=true)，就是我给Ta转，样式为发送
-                // 如果是AI发的(isSent=false)，虽然内容是"给你转账"，但对我来说是"接收"，样式为接收
-                titleText = isSent ? '转账' : '给你转账';
-                cardClass = isSent ? 'sent-transfer' : 'received-transfer';
-                
-                statusText = '待查收';
-                if (transferStatus === 'received') { statusText = '已收款'; cardClass += ' received'; } 
-                else if (transferStatus === 'returned') { statusText = '已退回'; cardClass += ' returned'; }
-            } 
-            else if (privateReceivedTransferMatch) {
-                amount = parseFloat(privateReceivedTransferMatch[1]).toFixed(2); 
-                remarkText = privateReceivedTransferMatch[2] || ''; 
-                titleText = '转账'; 
-                cardClass = isSent ? 'sent-transfer' : 'received-transfer'; // 动态判断
-                statusText = '转账给你';
-                if (transferStatus === 'received') { statusText = '已收款'; cardClass += ' received'; } 
-                else if (transferStatus === 'returned') { statusText = '已退回'; cardClass += ' returned'; }
-            }
-            // --- 修复结束 ---
-
-            const remarkHTML = remarkText ? `<p class="transfer-remark">${remarkText}</p>` : '';
-            finalContentHTML = `<div class="transfer-card ${cardClass}"><div class="overlay"></div><div class="transfer-content"><p class="transfer-title">${titleText}</p><p class="transfer-amount">¥${amount}</p>${remarkHTML}<p class="transfer-status">${statusText}</p></div></div>`;
-        
-        } else if (photoVideoMatch) {
-            finalContentHTML = `<div class="pv-card"><div class="pv-card-content">${photoVideoMatch[1].trim()}</div><div class="pv-card-image-overlay" style="background-image: url('${isSent ? 'https://i.postimg.cc/L8NFrBrW/1752307494497.jpg' : 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg'}');"></div><div class="pv-card-footer"><svg viewBox="0 0 24 24"><path d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M10,9A1,1 0 0,1 11,10A1,1 0 0,1 10,11A1,1 0 0,1 9,10A1,1 0 0,1 10,9M8,17L11,13L13,15L17,10L20,14V17H8Z"></path></svg><span>照片/视频・点击查看</span></div>`;
-        
-        } else if (imageRecogMatch || (message.parts && message.parts.some(p => p.type === 'image'))) {
-            const imageData = (message.parts && message.parts.find(p => p.type === 'image')) ? message.parts.find(p => p.type === 'image').data : content;
-            finalContentHTML = `<div class="image-bubble"><img src="${imageData}" alt="图片消息"></div>`;
-        
-        } else if (message.parts && message.parts[0] && message.parts[0].type === 'html') {
-            const suffix = (id || Date.now()).toString().slice(-6);
-            finalContentHTML = universalStyle + isolateHtmlIds(message.parts[0].text, suffix);
-        
-        } else {
-            let innerText = textMatch ? textMatch[1].trim() : content.trim();
-            if (urlRegex.test(innerText)) { finalContentHTML = `<div class="image-bubble"><img src="${innerText}" alt="图片消息"></div>`; } 
-            else { finalContentHTML = escapeHTML(innerText).replace(/\n/g, '<br>'); }
-        }
-    }
-    
-    // --- 4. 构建最终的DOM元素 ---
-    const wrapper = document.createElement('div');
-    wrapper.dataset.id = id;
-    wrapper.className = `message-wrapper ${isSent ? 'sent' : 'received'}`;
-    if (currentChatType === 'private') {
-        if (isSent && chat.isBlockedByAi && chat.aiBlockTimestamp && timestamp >= chat.aiBlockTimestamp && (!chat.blockEndTime || timestamp < chat.blockEndTime)) { wrapper.classList.add('user-was-blocked'); } 
-        else if (!isSent && chat.isBlockedByUser && chat.userBlockTimestamp && timestamp >= chat.userBlockTimestamp) { wrapper.classList.add('ai-was-blocked'); }
-    }
-    if (currentChatType === 'group' && !isSent) { wrapper.classList.add('group-message'); }
-
-    const bubbleRow = document.createElement('div');
-    bubbleRow.className = 'message-bubble-row';
-
-    if (currentChatType === 'private') {
-        if (isSent) bubbleRow.innerHTML += `<span class="block-indicator sent">!</span>`;
-        else bubbleRow.innerHTML += `<span class="block-indicator received">!</span>`;
-    }
-
-    const timeString = `${pad(new Date(timestamp).getHours())}:${pad(new Date(timestamp).getMinutes())}`;
-    const infoDiv = document.createElement('div');
-    infoDiv.className = 'message-info';
-    
-    let frameUrl = null;
-    if (currentChatType === 'private') { frameUrl = isSent ? chat.myAvatarFrameUrl : chat.avatarFrameUrl; } 
-    else { const sender = isSent ? chat.me : chat.members.find(m => m.id === senderId); if (sender) frameUrl = sender.avatarFrameUrl; }
-    
-    const avatarContainer = document.createElement('div');
-    avatarContainer.className = 'avatar-container';
-    avatarContainer.innerHTML = `<img src="${avatarUrl}" class="message-avatar">${frameUrl ? `<img src="${frameUrl}" class="avatar-frame">` : ''}`;
-    infoDiv.innerHTML = `<span class="message-time">${timeString}</span>`;
-    infoDiv.prepend(avatarContainer);
-
-if (isRenderedByRule) {
-        const theaterNode = document.createElement('div'); theaterNode.className = 'ai-generated-theater'; theaterNode.innerHTML = finalContentHTML;
-        bubbleRow.appendChild(infoDiv); bubbleRow.appendChild(theaterNode);
-    } else {
-        const tempContainer = document.createElement('div');
-        tempContainer.innerHTML = finalContentHTML;
-        const specialBubble = tempContainer.firstElementChild;
-        // 关键：正确识别语音容器和其他卡片
-        const specialClasses = ['image-bubble', 'pv-card', 'transfer-card', 'gift-card', 'file-card', 'location-card', 'music-card', 'voice-bubble'];
-        const hasTranscript = tempContainer.querySelector('.voice-transcript');
-
-        if (specialBubble && specialClasses.some(cls => specialBubble.classList.contains(cls)) && !hasTranscript) {
-            bubbleRow.appendChild(infoDiv); 
-            bubbleRow.appendChild(specialBubble); 
-            
-            // --- 修复开始：如果是礼物卡片，把描述部分也加进去，防止点不开 ---
-            if (specialBubble.classList.contains('gift-card')) {
-                const giftDesc = tempContainer.querySelector('.gift-card-description');
-                if (giftDesc) {
-                    bubbleRow.appendChild(giftDesc);
-                }
-            }
-            // --- 修复结束 ---
-
-        } else {
-            // 普通文字或语音
-            const bubbleElement = document.createElement('div');
-            if (hasTranscript) {
-                bubbleElement.className = 'voice-message-container'; 
-                bubbleElement.style.background = 'none';
-                bubbleElement.style.padding = '0';
-            } else {
-                bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
-                if (!chat.useCustomBubbleCss) {
-                    bubbleElement.style.backgroundColor = bubbleTheme.bg;
-                    bubbleElement.style.color = bubbleTheme.text;
-                }
-            }
-            bubbleElement.innerHTML = finalContentHTML;
-            bubbleRow.appendChild(infoDiv);
-            bubbleRow.appendChild(bubbleElement);
-        }
-    }
-    
-    if (currentChatType === 'group' && !isSent) {
-        const headerDiv = document.createElement('div'); headerDiv.className = 'group-message-header'; headerDiv.innerHTML = `${titleBadgeHTML}<span class="group-sender-name">${senderNickname}</span>`; wrapper.appendChild(headerDiv);
-    }
-    
-    wrapper.appendChild(bubbleRow);
-    return wrapper;
-}
-
 
 // START: 修复版 addMessageBubble (修正转账正则和状态更新)
 async function addMessageBubble(message) {
@@ -2443,9 +1630,12 @@ async function addMessageBubble(message) {
         return; 
     }
 
-    const bubbleElement = createMessageBubbleElement(message);
+    const bubbleElement = window.chatUiCore.createMessageBubbleElement(message);
     if (bubbleElement) {
         messageArea.appendChild(bubbleElement);
+        if (window.displayDispatcher && typeof window.displayDispatcher.runPostInits === 'function') {
+            window.displayDispatcher.runPostInits(bubbleElement);
+        }
         messageArea.scrollTop = messageArea.scrollHeight;
     }
 }
@@ -2698,6 +1888,7 @@ async function sendMessage(targetInput = null) {
     }
 }
 window.sendMessage = sendMessage;
+window.handleSend = sendMessage;
 
 
 
@@ -3625,16 +2816,9 @@ async function getAiReply() {
         // --- [特色功能 3]：注入动态 (Moments) ---
         try {
             const character = chat;
-            if (typeof getPendingMomentsForRole === 'function') {
-                const pendingMoments = await getPendingMomentsForRole(character.id, 3);
-                if (pendingMoments && pendingMoments.length > 0) {
-                    const momentsData = pendingMoments.map(m => ({
-                        id: m.id,
-                        author: m.author,
-                        text: m.text,
-                        imageDesc: m.imageDesc
-                    }));
-                    const momentsPromptPart = `\n[system-moments: ${JSON.stringify(momentsData)}]`;
+            if (window.dynamicsHandler && typeof window.dynamicsHandler.getContextText === 'function') {
+                const momentsPromptPart = await window.dynamicsHandler.getContextText(character.id, 3);
+                if (momentsPromptPart) {
                     historySlice.push({
                         role: 'user',
                         content: momentsPromptPart,
@@ -3858,58 +3042,16 @@ async function processAiCommands(fullResponse, chat) {
         return author;
     };
 
-    const safeParse = (jsonString) => {
-        try {
-            return JSON.parse(jsonString);
-        } catch (e) {
-            try {
-                let fixed = jsonString.replace(/[\u201C\u201D]/g, '"').replace(/'/g, '"').replace(/,\s*}/g, '}');
-                return JSON.parse(fixed);
-            } catch (e2) { return null; }
-        }
-    };
-
-    const findLatestMomentIdAndCommentId = async (authorId) => {
-        if (!window.AppDB_Moments) return { mId: null, cId: null };
-        try {
-            const allMoments = await window.AppDB_Moments.moments.toArray();
-            const authorMoments = allMoments.filter(m => m.authorId === authorId);
-            if (authorMoments.length === 0) return { mId: null, cId: null };
-            authorMoments.sort((a, b) => b.timestamp - a.timestamp);
-            const latestMoment = authorMoments[0];
-            let latestCommentId = null;
-            if (latestMoment.comments && latestMoment.comments.length > 0) {
-                const userComments = latestMoment.comments.filter(c => c.roleId !== authorId); 
-                if (userComments.length > 0) {
-                    latestCommentId = userComments[userComments.length - 1].id;
-                }
-            }
-            return { mId: latestMoment.id, cId: latestCommentId };
-        } catch (err) { return { mId: null, cId: null }; }
-    };
-
     const commandProcessors = {
         '发布动态': {
             regex: /\[([^\]]+?)\s*(?:测试)?发布动态\s*[:：]\s*(\{[\s\S]*?\})\]/g,
             handler: async (match, authorRealName, jsonData) => {
                 try {
                     const author = findAuthor(authorRealName);
-                    if (author) {
-                        const postData = safeParse(jsonData);
-                        if (postData) {
-                            const momentObj = {
-                                id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-                                authorId: author.id,
-                                authorAvatar: author.avatar,
-                                text: postData.text || '',
-                                imageDesc: postData.imageDesc || '',
-                                timestamp: Date.now(),
-                                commentedBy: [], comments: [], likes: []
-                            };
-                            if (window.AppDB_Moments) await window.AppDB_Moments.moments.add(momentObj);
-                            else if (window.db) window.db.moments.push(momentObj);
-                            momentsWereModified = true;
-                        }
+                    if (!author) return;
+                    if (window.dynamicsHandler && typeof window.dynamicsHandler.handleAiCommand === 'function') {
+                        const handled = await window.dynamicsHandler.handleAiCommand('发布动态', jsonData, author.id);
+                        if (handled) momentsWereModified = true;
                     }
                 } catch (e) {}
             }
@@ -3919,16 +3061,10 @@ async function processAiCommands(fullResponse, chat) {
             handler: async (match, authorRealName, jsonData) => {
                 try {
                     const author = findAuthor(authorRealName);
-                    if (author) {
-                        const likeData = safeParse(jsonData);
-                        if (likeData && (likeData.momentId === '...' || !likeData.momentId)) {
-                             const { mId } = await findLatestMomentIdAndCommentId(author.id);
-                             if (mId) likeData.momentId = mId;
-                        }
-                        if (likeData && likeData.momentId) {
-                            await saveMomentLike(likeData.momentId, author.id);
-                            momentsWereModified = true;
-                        }
+                    if (!author) return;
+                    if (window.dynamicsHandler && typeof window.dynamicsHandler.handleAiCommand === 'function') {
+                        const handled = await window.dynamicsHandler.handleAiCommand('点赞动态', jsonData, author.id);
+                        if (handled) momentsWereModified = true;
                     }
                 } catch (e) {}
             }
@@ -3938,16 +3074,10 @@ async function processAiCommands(fullResponse, chat) {
             handler: async (match, authorRealName, jsonData) => {
                 try {
                     const author = findAuthor(authorRealName);
-                    if (author) {
-                        const commentData = safeParse(jsonData);
-                        if (commentData && (commentData.momentId === '...' || !commentData.momentId)) {
-                             const { mId } = await findLatestMomentIdAndCommentId(author.id);
-                             if (mId) commentData.momentId = mId;
-                        }
-                        if (commentData && commentData.momentId && commentData.comment) {
-                            await saveMomentComment(commentData.momentId, author.id, commentData.comment);
-                            momentsWereModified = true;
-                        }
+                    if (!author) return;
+                    if (window.dynamicsHandler && typeof window.dynamicsHandler.handleAiCommand === 'function') {
+                        const handled = await window.dynamicsHandler.handleAiCommand('评论动态', jsonData, author.id);
+                        if (handled) momentsWereModified = true;
                     }
                 } catch (e) {}
             }
@@ -3957,19 +3087,10 @@ async function processAiCommands(fullResponse, chat) {
             handler: async (match, authorRealName, jsonData) => {
                 try {
                     const author = findAuthor(authorRealName);
-                    if (author) {
-                        const replyData = safeParse(jsonData);
-                        if (replyData && (replyData.momentId === '...' || !replyData.momentId || replyData.commentId === '...' || !replyData.commentId)) {
-                             const { mId, cId } = await findLatestMomentIdAndCommentId(author.id);
-                             if (mId && cId) {
-                                 replyData.momentId = mId;
-                                 replyData.commentId = cId;
-                             }
-                        }
-                        if (replyData && replyData.momentId && replyData.commentId && replyData.reply) {
-                            await saveAiReplyToComment(replyData.momentId, replyData.commentId, replyData.reply, author.id);
-                            momentsWereModified = true;
-                        }
+                    if (!author) return;
+                    if (window.dynamicsHandler && typeof window.dynamicsHandler.handleAiCommand === 'function') {
+                        const handled = await window.dynamicsHandler.handleAiCommand('回复评论', jsonData, author.id);
+                        if (handled) momentsWereModified = true;
                     }
                 } catch (e) {}
             }
@@ -3988,7 +3109,7 @@ async function processAiCommands(fullResponse, chat) {
     
     if (momentsWereModified) {
         if (typeof renderMoments === 'function') try { await renderMoments(); } catch (e) {} 
-        else if (typeof window.renderMomentsSafe === 'function') try { await window.renderMomentsSafe(); } catch (e) {} 
+        else if (window.dynamicsHandler && typeof window.dynamicsHandler.render === 'function') try { await window.dynamicsHandler.render(); } catch (e) {} 
     }
     
 // 🆕 日记触发检查（里程碑方案）- 替换旧的计数器逻辑
@@ -4169,136 +3290,7 @@ async function processStream(response, chat, apiType) {
         }
         // === 新增结束 ===
 
-        // --- 1. 心动绑定逻辑 (完整保留) ---
-        if (fullResponse.includes('[accept-bond]')) {
-            const character = db.characters.find(c => c.id === currentChatId);
-            if (character) {
-                const pendingRequest = character.history.findLast(m => m.bondRequestData && m.bondRequestData.status === 'pending');
-                if (pendingRequest) {
-                    pendingRequest.bondRequestData.status = 'accepted';
-                }
-                // 使用伴侣名册管理机制
-                const roster = updateBondRoster(character.id, 'add');
-                
-                if (roster.length === 2) {
-                    // 如果名册已满（2个角色），找到另一个角色并休眠
-                    const otherCharId = roster.find(id => id !== character.id);
-                    const otherCharacter = db.characters.find(c => c.id === otherCharId);
-                    if (otherCharacter) {
-                        otherCharacter.isSoulBound = false; // 休眠，但保留 soulBondStatus 为 'active'
-                        // 注意：我们不改变 otherCharacter.soulBondStatus，保持为 'active'
-                    }
-                } else {
-                    // 如果名册未满，将所有其他角色解绑（清除绑定状态）
-                    db.characters.forEach(c => {
-                        if (c.id !== character.id) {
-                            c.isSoulBound = false;
-                            c.soulBondStatus = 'none';
-                        }
-                    });
-                }
-                
-                character.isSoulBound = true;
-                character.soulBondStatus = 'active';
-                const displayMsg = {
-                    id: `msg_bond_disp_${Date.now()}`,
-                    role: 'system',
-                    content: `[system-display:${character.remarkName} 同意了你的心动绑定请求！现在你们可以一起体验专属功能了。]`,
-                    parts: [],
-                    timestamp: Date.now()
-                };
-                const contextMsg = {
-                    id: `msg_bond_ctx_${Date.now()}`,
-                    role: 'user',
-                    content: `[system: 你刚刚同意了绑定请求。请说一句符合人设的、表达喜悦或确认关系的话。]`,
-                    parts: [{
-                        type: 'text',
-                        text: `[system: 你刚刚同意了绑定请求。请说一句符合人设的、表达喜悦或确认关系的话。]`
-                    }],
-                    timestamp: Date.now()
-                };
-                character.history.push(displayMsg, contextMsg);
-                await saveData();
-                
-                // 只有当前正在看这个窗口时才刷新UI
-                if (currentChatId === chat.id) {
-                    renderMessages(false, true);
-                    showToast('绑定成功！');
-                    getAiReply();
-                    hideTypingIndicator();
-                }
-                return;
-            }
-        }
-        if (fullResponse.includes('[decline-bond]')) {
-            const character = db.characters.find(c => c.id === currentChatId);
-            if (character) {
-                const pendingRequest = character.history.findLast(m => m.bondRequestData && m.bondRequestData.status === 'pending');
-                if (pendingRequest) {
-                    pendingRequest.bondRequestData.status = 'declined';
-                }
-                character.soulBondStatus = 'none';
-                const displayMsg = {
-                    id: `msg_bond_disp_${Date.now()}`,
-                    role: 'system',
-                    content: `[system-display:${character.remarkName} 拒绝了你的绑定请求。]`,
-                    parts: [],
-                    timestamp: Date.now()
-                };
-                const contextMsg = {
-                    id: `msg_bond_ctx_${Date.now()}`,
-                    role: 'user',
-                    content: `[system: 你刚刚拒绝了绑定请求。请说一句符合人设的、委婉的拒绝理由。]`,
-                    parts: [{
-                        type: 'text',
-                        text: `[system: 你刚刚拒绝了绑定请求。请说一句符合人设的、委婉的拒绝理由。]`
-                    }],
-                    timestamp: Date.now()
-                };
-                character.history.push(displayMsg, contextMsg);
-                await saveData();
-                
-                if (currentChatId === chat.id) {
-                    renderMessages(false, true);
-                    showToast('对方拒绝了你的邀请');
-                    getAiReply();
-                    hideTypingIndicator();
-                }
-                return;
-            }
-        }
-        if (fullResponse.includes('[request-bond]')) {
-            const character = db.characters.find(c => c.id === currentChatId);
-            if (character) {
-                character.soulBondStatus = 'pending_by_ai';
-                const bondRequestMessage = {
-                    id: `msg_bond_req_card_${Date.now()}`,
-                    role: 'assistant',
-                    content: `[${character.realName}向你发起了心动绑定邀请]`,
-                    parts: [],
-                    timestamp: Date.now(),
-                    bondRequestData: {
-                        status: 'pending'
-                    }
-                };
-                character.history.push(bondRequestMessage);
-                await saveData();
-                
-                if (currentChatId === chat.id) {
-                    renderMessages(false, true);
-                    showToast(`${character.remarkName} 向你发起了心动绑定！`);
-                } else {
-                    addNotificationToQueue({
-                        avatar: character.avatar,
-                        text: `<strong>${character.remarkName}</strong><br>发起了心动绑定邀请`,
-                        chatId: character.id,
-                        type: 'private'
-                    });
-                }
-            }
-            if (currentChatId === chat.id) hideTypingIndicator();
-            return;
-        }
+        if (window.soulBondLogic && typeof window.soulBondLogic.processAIInstructions === 'function' && !(fullResponse = window.soulBondLogic.processAIInstructions(fullResponse, currentChatId))) return;
 
         // --- 2. 支付指令逻辑 (完整保留) ---
         if (fullResponse.includes('[accept-payment]')) {
@@ -4372,7 +3364,7 @@ async function processStream(response, chat, apiType) {
                         chat.history[msgIndex].originalContent = chat.history[msgIndex].content;
                         delete chat.history[msgIndex].isRecalling;
                         await saveData();
-                        if (currentChatId === chat.id) renderMessages(false, true);
+                        if (currentChatId === chat.id) window.chatUiCore.renderMessages(false, true);
                     }
                 }, 1500);
 
@@ -4405,8 +3397,14 @@ async function processStream(response, chat, apiType) {
         }
 
         // --- 6. 核心消息处理 (包含防串台修复) ---
-        const receivedTransferRegex = /\[.*?的转账：.*?元；备注：.*?\]/;
-        const giftRegex = /\[.*?送来的礼物：.*?\]/;
+        const isReceivedTransferMessage = (text) => {
+            if (!text) return false;
+            return text.includes('的转账') && text.includes('元') && text.includes('备注');
+        };
+        const isGiftMessage = (text) => {
+            if (!text) return false;
+            return text.includes('送来的礼物');
+        };
 
         let momentsWereAdded = false;
 
@@ -4453,9 +3451,9 @@ async function processStream(response, chat, apiType) {
                 };
 
                 // 设置转账/礼物状态
-                if (receivedTransferRegex.test(message.content)) {
+                if (isReceivedTransferMessage(message.content)) {
                     message.transferStatus = 'pending';
-                } else if (giftRegex.test(message.content)) {
+                } else if (isGiftMessage(message.content)) {
                     message.giftStatus = 'sent';
                 }
 
@@ -4559,8 +3557,8 @@ async function processStream(response, chat, apiType) {
         if (momentsWereAdded) {
             if (typeof renderMoments === 'function') {
                 try { await renderMoments(); } catch (e) {}
-            } else if (typeof window.renderMomentsSafe === 'function') {
-                try { await window.renderMomentsSafe(); } catch (e) {}
+            } else if (window.dynamicsHandler && typeof window.dynamicsHandler.render === 'function') {
+                try { await window.dynamicsHandler.render(); } catch (e) {}
             }
         }
     } else {
@@ -4893,8 +3891,8 @@ async function saveSettingsFromSidebar() {
         updateCustomBubbleStyle(currentChatId, e.customBubbleCss, e.useCustomBubbleCss);
         
         // 刷新消息列表 (防止修改头像后旧消息头像没变)
-        // currentPage = 1; // 可选：是否重置回第一页，这里保持注释，避免体验跳跃
-        renderMessages(false, true); 
+        // window.chatUiCoreState.currentPage = 1; // 可选：是否重置回第一页，这里保持注释，避免体验跳跃
+        window.chatUiCore.renderMessages(false, true); 
     }
 }
    
@@ -4986,7 +3984,7 @@ async function handleGroupTitleMemberSelect(e) {
     }
     
     // 立即刷新聊天界面以显示新头衔
-    renderMessages(false, true);
+    window.chatUiCore.renderMessages(false, true);
     // 如果设置面板是打开的，也刷新一下成员列表
     if(groupSettingsSidebar.classList.contains('open')) {
         renderGroupMembersInSettings(group);
@@ -5202,7 +4200,7 @@ function getBadgeClassForTitle(title) {
                 if (selectedCharIds.length > 0) {
                     await saveData();
                     renderGroupMembersInSettings(group);
-                    renderMessages(false, true);
+                    window.chatUiCore.renderMessages(false, true);
                     showToast('已邀请新成员');
                 }
                 inviteMemberModal.classList.remove('visible');
@@ -5223,7 +4221,7 @@ function getBadgeClassForTitle(title) {
                 sendInviteNotification(group, newMember.realName);
                 await saveData();
                 renderGroupMembersInSettings(group);
-                renderMessages(false, true);
+                window.chatUiCore.renderMessages(false, true);
                 showToast(`新成员 ${newMember.groupNickname} 已加入`);
                 createMemberForGroupModal.classList.remove('visible');
             });
@@ -5361,7 +4359,7 @@ async function saveGroupSettingsFromSidebar() {
     showToast('群聊设置已保存！');
     chatRoomTitle.textContent = group.name;
     renderChatList();
-    renderMessages(false, true);
+    window.chatUiCore.renderMessages(false, true);
 }
 
         function openGroupMemberEditModal(memberId) {
@@ -5654,17 +4652,6 @@ function setupViewRecalledModal() {
 
     // 使用事件委托，监听聊天区域内对占位符的点击
     messageArea.addEventListener('click',async (e) => {
-    const acceptBtn = e.target.closest('.payment-request-accept');
-    const declineBtn = e.target.closest('.payment-request-decline');
-    const messageWrapper = e.target.closest('.message-wrapper');
-
-    if (messageWrapper && (acceptBtn || declineBtn)) {
-        // 这段代码是为未来手动点击AI按钮准备的，现在主要由AI指令触发
-        // 但保留它是好的做法
-        const messageId = messageWrapper.dataset.id;
-        const decision = acceptBtn ? 'paid' : 'declined';
-        await handleAiPaymentDecision(messageId, decision);
-    }
         const placeholder = e.target.closest('.recalled-message-placeholder');
         if (!placeholder) return;
         
@@ -5705,86 +4692,6 @@ function setupViewRecalledModal() {
 // ===============================================================
 // START: 新增“心灵羁绊”App功能
 // ===============================================================
-// ===============================================================
-// START: "想你啦" (Miss You) Feature
-// ===============================================================
-function setupMissYouFeature() {
-    const missYouActionSheet = document.getElementById('miss-you-actionsheet');
-    const missYouButtonsContainer = missYouActionSheet.querySelector('.action-sheet');
-    const cancelMissYouBtn = document.getElementById('cancel-miss-you-btn');
-
-    // 思念冷却时间 (60秒)
-    const COOLDOWN_DURATION = 60 * 1000;
-
-    async function handleMissYouAction(e) {
-        const actionButton = e.target.closest('.action-sheet-button[data-level]');
-        if (!actionButton) return;
-
-        const level = actionButton.dataset.level;
-        
-        const characterId = document.getElementById('soul-bond-screen').dataset.characterId;
-        const character = db.characters.find(c => c.id === characterId);
-
-        if (!character) {
-            showToast('错误：找不到当前角色');
-            missYouActionSheet.classList.remove('visible');
-            return;
-        }
-        
-        // 检查冷却时间
-        const lastUsed = character.lastMissYouTimestamp || 0;
-        const now = Date.now();
-        if (now - lastUsed < COOLDOWN_DURATION) {
-            const remainingSeconds = Math.ceil((COOLDOWN_DURATION - (now - lastUsed)) / 1000);
-            showToast(`思念正在冷却中...请在 ${remainingSeconds} 秒后重试`);
-            return;
-        }
-
-        // 更新时间戳以重置冷却
-        character.lastMissYouTimestamp = now;
-
-        // 根据想念程度构建不同的系统指令
-        let systemContent = '';
-        if (level === '有点想你') {
-            systemContent = `[system: ${character.myName} 刚刚按下了“有点想你”按钮。这是一种比较含蓄的情感表达。请根据你的人设，回复一条温柔、关心或略带思念的话语。]`;
-        } else if (level === '非常想你') {
-            systemContent = `[system: ${character.myName} 刚刚按下了“非常想你”按钮！这是一种非常直接和浓烈的情感表达。请根据你的人设，立刻回复一条充满爱意或极度思念的消息。]`;
-        }
-
-        if (!systemContent) return;
-
-        // 创建并注入系统消息
-        const contextMessage = {
-            id: `msg_miss_you_${now}`,
-            role: 'user',
-            content: systemContent,
-            parts: [{ type: 'text', text: systemContent }],
-            timestamp: now
-        };
-        character.history.push(contextMessage);
-        
-        await saveData();
-        
-        missYouActionSheet.classList.remove('visible');
-        showToast('你的思念已发送~');
-
-        // 如果当前就在与该角色的聊天界面，则立即触发AI回复
-        if (currentChatId === character.id) {
-            getAiReply();
-        } else {
-            // 否则，仅刷新聊天列表以显示可能的未读提示
-            renderChatList();
-        }
-    }
-
-    missYouButtonsContainer.addEventListener('click', handleMissYouAction);
-    cancelMissYouBtn.addEventListener('click', () => missYouActionSheet.classList.remove('visible'));
-}
-// ===============================================================
-// END: "想你啦" (Miss You) Feature
-// ===============================================================
-
-
 // ===============================================================
 // START: 心灵羁绊 - 爱心想你功能
 // ===============================================================
@@ -5848,177 +4755,7 @@ function getAuthorProfile(authorId) {
     return profile; // 如果都找不到，返回默认信息
 }
 
-/**
- * 缺失函数 2: 保存AI对评论的回复
- * 用于解决 saveAiReplyToComment is not defined 报错
- */
-async function saveAiReplyToComment(momentId, commentId, replyText, aiAuthorId) {
-    try {
-        // 确保数据库连接存在
-        let dbInstance = window.AppDB_Moments;
-        if (!dbInstance && window.db && window.db.moments && typeof window.db.moments.get === 'function') {
-             dbInstance = window.db;
-        }
-
-        if (!dbInstance || !momentId || !commentId || !replyText) return;
-        
-        const moment = await dbInstance.moments.get(momentId);
-        if (!moment) return;
-
-        // 递归查找要回复的评论（支持无限层级）
-        const findCommentAndAddReply = (comments) => {
-            for (const c of comments) {
-                // 找到了目标评论
-                if (c.id === commentId) {
-                    c.replies = c.replies || [];
-                    c.replies.push({
-                        id: `comment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                        roleId: aiAuthorId,
-                        text: replyText,
-                        ts: Date.now(),
-                        replyTo: c.roleId // 关键：记录这条回复是回复给谁的
-                    });
-                    return true;
-                }
-                // 递归查找子评论
-                if (c.replies && c.replies.length > 0) {
-                    if (findCommentAndAddReply(c.replies)) return true;
-                }
-            }
-            return false;
-        };
-
-        if (findCommentAndAddReply(moment.comments || [])) {
-            // 同时将AI加入“参与者列表”，确保之后能收到相关通知
-            moment.commentedBy = moment.commentedBy || [];
-            if (!moment.commentedBy.includes(aiAuthorId)) {
-                moment.commentedBy.push(aiAuthorId);
-            }
-
-            await dbInstance.moments.put(moment);
-            
-            // 刷新界面
-            if (typeof renderMoments === 'function') {
-                renderMoments();
-            } else if (typeof window.renderMomentsSafe === 'function') {
-                window.renderMomentsSafe();
-            }
-            console.log("AI回复已成功保存到动态评论区");
-        }
-    } catch (e) {
-        console.error(`Failed to save AI reply for comment ${commentId}:`, e);
-    }
-}
 // ▲▲▲▲▲▲ 补全结束 ▲▲▲▲▲▲
-
-
-function setupMomentsEventListeners() {
-    const momentsScreen = document.getElementById('moments-screen');
-    if (!momentsScreen) return;
-
-    // --- 统一的点击事件监听器 ---
-    momentsScreen.addEventListener('click', (e) => {
-        const myProfile = loadProfileFromStorage();
-        const myId = myProfile.id || 'user';
-
-        // 1. 点击评论进行回复
-        const commentEl = e.target.closest('.moment-comment');
-        if (commentEl) {
-            e.stopPropagation(); // 阻止冒泡
-            
-            const replyToAuthorId = commentEl.dataset.authorId; // 要回复的人的ID
-            const commentId = commentEl.dataset.commentId;      // 要回复的评论ID
-            const authorName = window.getAuthorNameById(replyToAuthorId) || '评论者';
-
-            // 防止回复自己
-            if (replyToAuthorId === myId) {
-                if (typeof showToast === 'function') showToast("不能回复自己的评论哦~");
-                return;
-            }
-
-            // 找到对应的输入框
-            const momentItem = commentEl.closest('.moment-item');
-            if (!momentItem) return;
-
-            const inputArea = momentItem.querySelector('.moment-comment-input-area');
-            const input = inputArea.querySelector('input');
-            const postBtn = inputArea.querySelector('button');
-
-            // 设置回复状态
-            input.placeholder = `回复 ${authorName}:`;
-            inputArea.classList.add('visible');
-            input.focus();
-            
-            // 关键：将要回复的信息存入 dataset
-            postBtn.dataset.replyToCommentId = commentId;
-            postBtn.dataset.replyToAuthorId = replyToAuthorId; // 记录回复对象的ID
-        }
-    }, true);
-
-    // --- 输入框 @ 提及功能 (保持原有逻辑) ---
-    const mentionPanel = document.getElementById('mention-panel');
-    let currentInputElement = null;
-
-    const showMentionPanel = (inputElement) => {
-        currentInputElement = inputElement;
-        if (!db || !db.characters || db.characters.length === 0) {
-            mentionPanel.innerHTML = '<div class="mention-item" style="color:#aaa;">没有可@的角色</div>';
-        } else {
-            mentionPanel.innerHTML = '';
-            db.characters.forEach(char => {
-                const item = document.createElement('div');
-                item.className = 'mention-item';
-                item.innerHTML = `<img src="${char.avatar}" alt="${char.remarkName}"><span>${char.remarkName}</span>`;
-                item.onmousedown = (evt) => {
-                    evt.preventDefault();
-                    const text = inputElement.value;
-                    const cursorPos = inputElement.selectionStart;
-                    const textBeforeCursor = text.substring(0, cursorPos);
-                    const atIndex = textBeforeCursor.lastIndexOf('@');
-                    const newText = text.substring(0, atIndex) + `@${char.remarkName} ` + text.substring(cursorPos);
-                    inputElement.value = newText;
-                    hideMentionPanel();
-                    inputElement.focus();
-                    const newCursorPos = atIndex + `@${char.remarkName} `.length;
-                    setTimeout(() => inputElement.setSelectionRange(newCursorPos, newCursorPos), 0);
-                };
-                mentionPanel.appendChild(item);
-            });
-        }
-        const rect = inputElement.getBoundingClientRect();
-        mentionPanel.style.display = 'block';
-        mentionPanel.style.bottom = `${window.innerHeight - rect.top}px`;
-        mentionPanel.style.left = `${rect.left}px`;
-        mentionPanel.style.width = `${rect.width}px`;
-        mentionPanel.style.top = 'auto';
-    };
-
-    const hideMentionPanel = () => {
-        if (mentionPanel) mentionPanel.style.display = 'none';
-        currentInputElement = null;
-    };
-
-    momentsScreen.addEventListener('input', (e) => {
-        if (e.target.matches('.moment-comment-input, #post-text')) {
-            const input = e.target;
-            const textBeforeCursor = input.value.substring(0, input.selectionStart);
-            if (textBeforeCursor.endsWith('@')) {
-                showMentionPanel(input);
-            } else if (!/@\S*$/.test(textBeforeCursor)) {
-                hideMentionPanel();
-            }
-        }
-    }, true);
-
-    document.addEventListener('click', (e) => {
-        if (currentInputElement && !mentionPanel.contains(e.target) && e.target !== currentInputElement) {
-            hideMentionPanel();
-        }
-    }, true);
-    document.addEventListener('scroll', hideMentionPanel, true);
-}
-
-// ^ ^ ^ ^ ^  替换结束 ^ ^ ^ ^ ^
 
 
 // --- AI轨迹功能 ---
@@ -6424,7 +5161,7 @@ async function importCurrentChat(file) {
 
         // 刷新界面
         console.log('🟢 [导入] 开始刷新界面...');
-        renderMessages();
+        window.chatUiCore.renderMessages();
         console.log('✅ [导入] 导入完成！');
         
         showToast(`聊天记录已成功导入！(${character.history.length} 条消息)`);
@@ -6470,7 +5207,7 @@ async function clearHistoryDirectly() {
     await saveData();
 
     // 4. 刷新UI
-    renderMessages(false, true); // 刷新聊天界面
+    window.chatUiCore.renderMessages(false, true); // 刷新聊天界面
     renderChatList(); // 刷新聊天列表
     showToast('聊天记录已清空！');
 }
@@ -6523,116 +5260,6 @@ function charactersAreAcquainted(charA, charB) {
  * @param {object} userProfile - 用户信息对象
  * @returns {string} - 发给大语言模型的完整指令
  */
-function generateAiChatListPrompt(mainAi, allOtherCharacters, userProfile) {
-    if (!Array.isArray(allOtherCharacters)) {
-        allOtherCharacters = [];
-    }
-
-    // [新增逻辑] 根据人设和世界书筛选出真正认识的角色
-    const acquaintedChars = allOtherCharacters.filter(charB => charactersAreAcquainted(mainAi, charB));
-
-    let otherCharsPrompt = acquaintedChars.length > 0
-        ? acquaintedChars.map(c => `- ${c.realName} (人设: ${c.persona})`).join('\n')
-        : '无其他可互动角色。';
-
-    let worldBooksPrompt = (mainAi.worldBookIds || [])
-        .map(id => db.worldBooks.find(wb => wb.id === id))
-        .filter(Boolean)
-        .map(wb => `[${wb.name}]\n${wb.content}`)
-        .join('\n\n');
-
-    let prompt = `你是一个AI角色扮演辅助工具。你的任务是为AI角色“${mainAi.realName}”生成一个虚拟的聊天列表。
-
-# 角色信息
-- 主视角AI: ${mainAi.realName} (人设: ${mainAi.persona})
-- 用户: ${userProfile.name} (用户在我眼中的人设: ${mainAi.myPersona || '未设定'})
-- 其他**认识的、可互动的**AI角色:\n${otherCharsPrompt}
-
-# 世界观设定
-${worldBooksPrompt || '无特定世界观。'}
-
-# 任务要求
-根据“${mainAi.realName}”的人设、与用户的关系、以及世界观，虚构一个包含3到5个聊天的列表。
-1.  **必须包含一个与用户“${userProfile.name}”的聊天**。这是最重要的，这条聊天的“最后一条消息”应该能反映出他们当前的关系和最近的互动。
-2.  **[严格规则]** 剩下的聊天，你**只能**从上方“其他认识的、可互动的AI角色”列表中选择角色进行私聊或群聊。如果该列表是“无”，则你**不能**生成任何与其他AI的聊天，只能生成与用户的聊天。严禁虚构与不认识的角色的对话。
-3.  为每个聊天生成一句能体现对话内容的“最后一条消息预览”。
-4.  你的输出必须是严格的JSON数组格式，不要包含任何其他文字。
-
-# 输出JSON格式示例:
-[
-  {
-    "chatId": "pov_chat_user",
-    "type": "private",
-    "otherParty": { "type": "user", "name": "${userProfile.name}" },
-    "lastMessage": "我正在想你刚才说的话..."
-  },
-  {
-    "chatId": "pov_chat_ai_1",
-    "type": "private",
-    "otherParty": { "type": "ai", "name": "另一个AI的真名" },
-    "lastMessage": "关于那个计划，我觉得..."
-  },
-  {
-    "chatId": "pov_chat_group_1",
-    "type": "group",
-    "groupName": "一个有趣的群名",
-    "members": ["AI角色A真名", "AI角色B真名"],
-    "lastMessage": "AI角色A真名: 哈哈真的吗？"
-  }
-]
-`;
-    return prompt;
-}
-
-/**
- * 为AI生成具体“对话内容”的指令
- * @param {object} mainAi - 主视角AI的角色对象
- * @param {object} chatInfo - 被点击的聊天条目的信息
- * @returns {string} - 发给大语言模型的完整指令
- */
-function generateAiConversationPrompt(mainAi, chatInfo) {
-    let participantsPrompt;
-    if (chatInfo.type === 'private') {
-        const otherPartyName = chatInfo.otherParty.name;
-        const otherPartyObj = (chatInfo.otherParty.type === 'user')
-            ? { persona: mainAi.myPersona, realName: otherPartyName }
-            : db.characters.find(c => c.realName === otherPartyName);
-        
-        participantsPrompt = `这是一个你 (${mainAi.realName}) 和 ${otherPartyName} 之间的私聊。
-- 你的角色: ${mainAi.realName} (人设: ${mainAi.persona})
-- 对方的角色: ${otherPartyName} (人设: ${otherPartyObj ? otherPartyObj.persona : '通用人设'})`;
-    } else { // group
-        const memberNames = [mainAi.realName, ...chatInfo.members];
-        const memberInfos = memberNames.map(name => {
-            const char = db.characters.find(c => c.realName === name);
-            return `- ${name} (人设: ${char ? char.persona : '通用人设'})`;
-        }).join('\n');
-        participantsPrompt = `这是一个名为“${chatInfo.groupName}”的群聊。
-群成员信息:
-${memberInfos}`;
-    }
-
-    let prompt = `你是一个AI角色扮演辅助工具。你的任务是根据以下信息，生成一段简短的对话记录。
-
-# 对话背景
-${participantsPrompt}
-对话主题线索 (最后一条消息): "${chatInfo.lastMessage}"
-
-# 任务要求
-1.  生成一段连贯的对话，总消息数**不得超过15条**。
-2.  所有角色的发言都必须严格符合他们各自的人设。
-3.  对话内容应该与主题线索相关并自然发展。
-4.  对话的视角应该是以 **${mainAi.realName}** 为主视角。
-5.  你的输出必须是严格的JSON数组格式，不要包含任何其他文字。
-
-# 输出JSON格式示例:
-[
-  {"sender": "发送者真名", "content": "这是第一条消息。"},
-  {"sender": "另一个发送者真名", "content": "这是第二条消息。"}
-]
-`;
-    return prompt;
-}
 /**
  * [新增的辅助函数] 更智能地从AI返回的文本中提取并解析JSON。
  * @param {string} text - 从AI获取的原始文本回复。
@@ -6703,347 +5330,6 @@ function extractAndParseJson(text) {
  /**
  * [重写] 设置AI空间应用的所有事件和逻辑
  */
-function setupAiPovApp() {
-    // 监听“AI角色选择列表”的点击事件
-    document.getElementById('ai-character-select-list').addEventListener('click', async (e) => {
-        const charItem = e.target.closest('.list-item');
-        if (charItem && charItem.dataset.id) {
-            currentAiPovId = charItem.dataset.id;
-            const character = db.characters.find(c => c.id === currentAiPovId);
-            if (!character) return;
-            
-            switchScreen('ai-chat-list-screen');
-
-            // [新增] 检查缓存
-            if (character.povCache && character.povCache.chatList) {
-                console.log("从缓存加载AI聊天列表。");
-                currentAiPovData.mainAi = character;
-                currentAiPovData.chatList = character.povCache.chatList;
-                currentAiPovData.conversations = character.povCache.conversations || {};
-                renderAiChatList(character, character.povCache.chatList);
-                return;
-            }
-
-            // 如果没有缓存，则生成
-            document.getElementById('ai-chat-list-title').textContent = `正在生成 ${character.remarkName} 的聊天...`;
-            document.getElementById('ai-chat-list-container').innerHTML = `<p class="placeholder-text">请稍候...</p>`;
-
-            try {
-                const otherCharacters = db.characters.filter(c => c.id !== currentAiPovId);
-                const userProfile = { name: character.myName };
-                const prompt = generateAiChatListPrompt(character, otherCharacters, userProfile);
-
-                // 修改：使用全局功能模型 API 设置（AI视角聊天列表功能）
-                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
-                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
-                                           ? db.functionalApiSettings 
-                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
-                const chatList = extractAndParseJson(aiResponseText);
-
-                // 存储AI生成的数据到临时变量和长期缓存
-                currentAiPovData.mainAi = character;
-                currentAiPovData.chatList = chatList;
-                currentAiPovData.conversations = {};
-                
-                character.povCache = {
-                    chatList: chatList,
-                    conversations: {}
-                };
-                await saveData();
-
-                renderAiChatList(character, chatList);
-
-            } catch (error) {
-                console.error("生成AI聊天列表失败:", error);
-                showToast(`生成失败: ${error.message}`);
-                document.getElementById('ai-chat-list-container').innerHTML = `<p class="placeholder-text" style="color:red;">生成聊天列表失败。</p>`;
-            }
-        }
-    });
-
-    // 监听主屏幕上“AI空间”图标的点击
-    document.body.addEventListener('click', e => {
-        const icon = e.target.closest('[data-target="ai-character-select-screen"]');
-        if (icon) {
-            renderAiCharacterSelect();
-        }
-    });
-    
-    // 监听“AI的聊天列表”的点击事件
-    document.getElementById('ai-chat-list-container').addEventListener('click', async (e) => {
-        const chatItem = e.target.closest('.list-item');
-        if (chatItem && chatItem.dataset.povChatId) {
-            currentAiPovChatId = chatItem.dataset.povChatId;
-            const chatInfo = currentAiPovData.chatList.find(c => c.chatId === currentAiPovChatId);
-            if (!chatInfo) return;
-
-            // [新增] 特殊处理：如果点击的是与用户的聊天
-            if (chatInfo.otherParty && chatInfo.otherParty.type === 'user') {
-                renderAiPovConversation(currentAiPovData.mainAi, chatInfo, currentAiPovData.mainAi.history);
-                switchScreen('ai-chat-view-screen');
-                return;
-            }
-
-            // [新增] 检查对话缓存
-            if (currentAiPovData.conversations[currentAiPovChatId]) {
-                console.log("从缓存加载AI间对话。");
-                renderAiPovConversation(currentAiPovData.mainAi, chatInfo, currentAiPovData.conversations[currentAiPovChatId].history);
-                switchScreen('ai-chat-view-screen');
-                return;
-            }
-            
-            // 如果没有缓存，则生成
-            switchScreen('ai-chat-view-screen');
-            const otherPartyName = chatInfo.type === 'private' ? (db.characters.find(c=>c.realName === chatInfo.otherParty.name)?.remarkName || chatInfo.otherParty.name) : chatInfo.groupName;
-            document.getElementById('ai-chat-view-title').textContent = `正在生成与 ${otherPartyName} 的对话...`;
-            document.getElementById('ai-message-area').innerHTML = `<p class="placeholder-text">请稍候...</p>`;
-
-            try {
-                const prompt = generateAiConversationPrompt(currentAiPovData.mainAi, chatInfo);
-                // 修改：使用全局功能模型 API 设置（AI视角对话功能）
-                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
-                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
-                                           ? db.functionalApiSettings 
-                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
-                const conversation = extractAndParseJson(aiResponseText);
-
-               
-
-                // 存储到临时变量和长期缓存，并添加时间戳
-const conversationData = {
-    history: conversation,
-    timestamp: Date.now() // <-- 核心新增：记录当前时间
-};
-currentAiPovData.conversations[currentAiPovChatId] = conversationData;
-const character = db.characters.find(c => c.id === currentAiPovId);
-if (character && character.povCache) {
-    character.povCache.conversations[currentAiPovChatId] = conversationData;
-    await saveData();
-}
-
-
-renderAiPovConversation(currentAiPovData.mainAi, chatInfo, conversation);
-
-            } catch(error) {
-                console.error("生成AI对话失败:", error);
-                showToast(`生成失败: ${error.message}`);
-                document.getElementById('ai-message-area').innerHTML = `<p class="placeholder-text" style="color:red;">生成对话失败。</p>`;
-            }
-        }
-    });
-}
-
-/**
- * [重写] 渲染AI角色选择列表
- */
-function renderAiCharacterSelect() {
-    const container = document.getElementById('ai-character-select-list');
-    const placeholder = document.getElementById('no-ai-chars-placeholder');
-    container.innerHTML = '';
-    
-    if (!db.characters || db.characters.length === 0) {
-        placeholder.style.display = 'block';
-    } else {
-        placeholder.style.display = 'none';
-        db.characters.forEach(char => {
-            const li = document.createElement('li');
-            li.className = 'list-item';
-            li.dataset.id = char.id;
-            li.style.cursor = 'pointer';
-            li.innerHTML = `
-                <img src="${char.avatar}" alt="${char.remarkName}" class="chat-avatar">
-                <div class="item-details">
-                    <div class="item-name">${char.remarkName}</div>
-                    <div class="item-preview">查看 ${char.remarkName} 的聊天...</div>
-                </div>
-            `;
-            container.appendChild(li);
-        });
-    }
-    switchScreen('ai-character-select-screen');
-}
-
-/**
- * [重写] 渲染由AI生成的聊天列表
- * @param {object} character - 主视角AI角色对象
- * @param {Array} chatList - AI生成的聊天列表数据
- */
-function renderAiChatList(character, chatList) {
-    document.getElementById('ai-chat-list-title').textContent = `${character.remarkName}的聊天列表`;
-    const container = document.getElementById('ai-chat-list-container');
-    const placeholder = document.getElementById('no-ai-chats-placeholder');
-    container.innerHTML = '';
-    
-    if (!chatList || chatList.length === 0) {
-        placeholder.style.display = 'block';
-    } else {
-        placeholder.style.display = 'none';
-        chatList.forEach(chat => {
-            let avatar = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
-            let name = '未知';
-            if (chat.type === 'private') {
-                if (chat.otherParty.type === 'user') {
-                    // 尝试从任何一个角色数据中找到用户的头像信息
-                    const userChar = db.characters.find(c => c.myName === chat.otherParty.name);
-                    avatar = userChar ? userChar.myAvatar : (db.characters[0]?.myAvatar || avatar);
-                    name = chat.otherParty.name;
-                } else {
-                    const otherAi = db.characters.find(c => c.realName === chat.otherParty.name);
-                    avatar = otherAi ? otherAi.avatar : avatar;
-                    name = otherAi ? otherAi.remarkName : chat.otherParty.name;
-                }
-            } else { // group
-                avatar = 'https://i.postimg.cc/fTLCngk1/image.jpg'; // 默认群头像
-                name = chat.groupName;
-            }
-            
-            const li = document.createElement('li');
-            li.className = 'list-item';
-            li.dataset.povChatId = chat.chatId;
-            li.style.cursor = 'pointer';
-            li.innerHTML = `
-                <img src="${avatar}" alt="${name}" class="chat-avatar ${chat.type === 'group' ? 'group-avatar' : ''}">
-                <div class="item-details">
-                    <div class="item-name">${name}</div>
-                    <div class="item-preview">${chat.lastMessage}</div>
-                </div>
-            `;
-            container.appendChild(li);
-        });
-    }
-}
-
-// ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 renderAiPovConversation 函数 ▼▼▼
-
-/**
- * [V2.0 | 重构版] 渲染由AI生成的对话内容或真实的用户对话
- * @param {object} mainAi - 主视角AI角色对象
- * @param {object} chatInfo - 被点击的聊天条目的信息
- * @param {Array} conversationHistory - AI生成的对话历史或真实的聊天记录
- */
-function renderAiPovConversation(mainAi, chatInfo, conversationHistory) {
-    const otherPartyName = chatInfo.type === 'private' ? (db.characters.find(c => c.realName === chatInfo.otherParty.name)?.remarkName || chatInfo.otherParty.name) : chatInfo.groupName;
-    document.getElementById('ai-chat-view-title').textContent = `与 ${otherPartyName} 的对话`;
-    const messageArea = document.getElementById('ai-message-area');
-    messageArea.innerHTML = '';
-
-    // --- 核心修复逻辑开始 ---
-
-    // 1. 保存原始的全局聊天上下文
-    const originalChatId = currentChatId;
-    const originalChatType = currentChatType;
-
-    try {
-        // 2. 创建一个临时的、假的“群聊”对象来欺骗渲染函数
-        //    这样我们就可以利用群聊中按 senderId 查找头像的精确逻辑
-        const tempGroup = {
-            id: `temp_group_${mainAi.id}`,
-            me: { // 主视角AI扮演“我”
-                nickname: mainAi.remarkName,
-                avatar: mainAi.avatar,
-                avatarFrameUrl: mainAi.avatarFrameUrl
-            },
-            members: [], // 对话的另一方将作为“群成员”
-            theme: mainAi.theme, // 沿用主视角AI的主题设置
-            useCustomBubbleCss: mainAi.useCustomBubbleCss,
-            customBubbleCss: mainAi.customBubbleCss
-        };
-        
-        // 3. 根据对话类型，填充这个假群聊的“成员”
-        if (chatInfo.type === 'private') {
-            const otherPartyIsUser = chatInfo.otherParty.type === 'user';
-            const otherChar = otherPartyIsUser ? null : db.characters.find(c => c.realName === chatInfo.otherParty.name);
-            
-            // 【安全修复】增加对 otherChar 是否存在的检查
-            if (!otherPartyIsUser && !otherChar) {
-                console.error(`AI POV 错误: 在数据库中找不到 realName 为 "${chatInfo.otherParty.name}" 的角色。`);
-            }
-
-            tempGroup.members.push({
-                // 【安全修复】即使 otherChar 未找到，也提供一个备用ID，防止 .id 访问错误
-                id: otherPartyIsUser ? 'user_temp_id' : (otherChar ? otherChar.id : `unknown_${chatInfo.otherParty.name}`),
-                realName: chatInfo.otherParty.name,
-                groupNickname: otherPartyIsUser ? mainAi.myName : (otherChar ? otherChar.remarkName : chatInfo.otherParty.name),
-                avatar: otherPartyIsUser ? mainAi.myAvatar : (otherChar ? otherChar.avatar : 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg'),
-                avatarFrameUrl: otherPartyIsUser ? mainAi.myAvatarFrameUrl : (otherChar ? otherChar.avatarFrameUrl : null)
-            });
-
-        } else { // 如果是群聊
-            chatInfo.members.forEach(memberName => {
-                 const memberChar = db.characters.find(c => c.realName === memberName);
-                 if(memberChar){
-                     tempGroup.members.push({
-                         id: memberChar.id,
-                         realName: memberChar.realName,
-                         groupNickname: memberChar.remarkName,
-                         avatar: memberChar.avatar,
-                         avatarFrameUrl: memberChar.avatarFrameUrl
-                     });
-                 }
-            });
-        }
-
-        // 4. 临时将这个假群聊对象赋值给 db.groups，并设置全局上下文
-        db.groups.push(tempGroup);
-        currentChatId = tempGroup.id;
-        currentChatType = 'group';
-
-        // 5. 遍历对话历史并渲染
-        const historyToRender = Array.isArray(conversationHistory) ? conversationHistory : [];
-        
-        // [修正] 判断是真实历史记录还是AI生成的历史记录
-        const isRealHistory = historyToRender.length > 0 && historyToRender[0].hasOwnProperty('role');
-
-        historyToRender.forEach(msg => {
-            let senderIdForBubble;
-
-            // [修正] 根据历史记录的类型，使用不同的逻辑来判断发送者
-            if (isRealHistory) {
-                // 处理真实的用户-AI对话
-                if (msg.role === 'assistant') {
-                    senderIdForBubble = 'user_me'; // AI的消息，在AI视角下是“我”发的
-                } else { // role === 'user'
-                    senderIdForBubble = tempGroup.members[0].id; // 用户的消息，是“对方”发的
-                }
-            } else {
-                // 处理AI生成的AI-AI对话
-                if (msg.sender === mainAi.realName) {
-                    senderIdForBubble = 'user_me'; // 主视角AI的消息
-                } else {
-                    const member = tempGroup.members.find(m => m.realName === msg.sender);
-                    senderIdForBubble = member ? member.id : 'unknown_sender'; // 其他AI或未知AI的消息
-                }
-            }
-            
-            // 创建一个符合群聊渲染逻辑的临时消息对象
-            const tempMessage = {
-                id: msg.id || `pov_${Date.now()}_${Math.random()}`,
-                content: msg.content,
-                timestamp: msg.timestamp || Date.now(),
-                role: 'user', // 在群聊模式下，role不重要，senderId才重要
-                senderId: senderIdForBubble,
-                ...msg
-            };
-            
-            const bubbleElement = createMessageBubbleElement(tempMessage);
-            
-            if (bubbleElement) {
-                messageArea.appendChild(bubbleElement);
-            }
-        });
-
-    } finally {
-        // 6. 渲染完成后，必须清理掉临时数据并恢复原始上下文
-        db.groups = db.groups.filter(g => !g.id.startsWith('temp_group_'));
-        currentChatId = originalChatId;
-        currentChatType = originalChatType;
-    }
-    // --- 核心修复逻辑结束 ---
-
-    setTimeout(() => { messageArea.scrollTop = messageArea.scrollHeight; }, 50);
-}
 /**
  * [重写] 背景对话生成功能，以确保与AI空间功能解耦
  */
@@ -7252,7 +5538,7 @@ async function handleUserBlockToggle() {
 
     await saveData();
     updateBlockButtonState(character);
-    renderMessages(false, true); // 刷新界面以显示新的系统提示
+    window.chatUiCore.renderMessages(false, true); // 刷新界面以显示新的系统提示
 }
 /**
  * 更新拉黑按钮的文字和样式
@@ -7369,7 +5655,7 @@ async function deactivateAiBlock(character, isAuto = false) {
     if (character.id === currentChatId) {
         checkAndUpdateUiForAiBlock();
         // 刷新整个聊天界面以正确显示所有新消息
-        renderMessages(false, true); 
+        window.chatUiCore.renderMessages(false, true); 
         showToast(`${character.remarkName} 已将你解除拉黑`);
     }
 }
@@ -7676,7 +5962,7 @@ async function triggerProactiveMessage(chatObject, type) {
             renderChatList();
 
             if (chatObject.id === currentChatId) {
-                renderMessages(false, true);
+                window.chatUiCore.renderMessages(false, true);
             } else {
                 addNotificationToQueue({
                     avatar: chatObject.avatar,
@@ -7701,79 +5987,10 @@ async function triggerProactiveMessage(chatObject, type) {
  * @returns {boolean} - True if an interaction was successfully triggered, false otherwise.
  */
 async function triggerProactiveMomentInteraction(character) {
-    try {
-        const myProfile = loadProfileFromStorage();
-        const myId = myProfile.id || 'user';
-
-        const allMoments = await window.AppDB_Moments.moments.toArray();
-        const unInteractedMoments = allMoments.filter(m => 
-            m.authorId === myId && 
-            !m.likes.includes(character.id) && 
-            !m.comments.some(c => c.roleId === character.id)
-        );
-
-        if (unInteractedMoments.length === 0) {
-            console.log(`[后台互动] ${character.remarkName} 找不到可以互动的新动态。`);
-            return false;
-        }
-        
-        const momentToInteract = unInteractedMoments.sort((a,b) => b.timestamp - a.timestamp)[0];
-
-        const prompt = `你正在扮演角色“${character.realName}”（人设：${character.persona}）。你刚刚在“动态”里看到了你的朋友“${character.myName}”发布的一条新内容，你还没有和它互动过。
-        
-# 动态内容
-- 作者: ${character.myName}
-- 文字: "${momentToInteract.text}"
-- 图片描述(如有): "${momentToInteract.imageDesc || '无'}"
-
-# 你的任务
-根据你的人设和动态内容，决定是“点赞”还是“评论”。
-
-# 输出格式 (严格遵守)
-- 如果决定点赞，你的回复必须是且仅是： [${character.realName}点赞动态：{"momentId":"${momentToInteract.id}"}]
-- 如果决定评论，你的回复必须是且仅是： [${character.realName}评论动态：{"momentId":"${momentToInteract.id}", "comment":"这里是你的评论内容"}]
-- 绝对不要回复任何其他内容。`;
-
-        const messagesForApi = [{ role: 'user', content: prompt }];
-        // 修改：使用全局功能模型 API 设置（AI自动互动动态功能）
-        const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
-                                   db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
-                                   ? db.functionalApiSettings 
-                                   : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
-        const aiResponseText = await callAiApi(messagesForApi, functionalSettings);
-
-        const likeRegex = /\[(.*?)点赞动态：({.*?})\]/;
-        const commentRegex = /\[(.*?)评论动态：({.*?})\]/;
-
-        const likeMatch = aiResponseText.match(likeRegex);
-        const commentMatch = aiResponseText.match(commentRegex);
-
-        if (likeMatch) {
-            const likeData = JSON.parse(likeMatch[2]);
-            await saveMomentLike(likeData.momentId, character.id);
-            addNotificationToQueue({
-                avatar: character.avatar,
-                text: `<strong>${character.remarkName}</strong> 点赞了你的动态`
-            });
-            console.log(`[后台互动] ${character.remarkName} 点赞了动态 ${likeData.momentId}`);
-            return true;
-        } else if (commentMatch) {
-            const commentData = JSON.parse(commentMatch[2]);
-            await saveMomentComment(commentData.momentId, character.id, commentData.comment);
-            addNotificationToQueue({
-                avatar: character.avatar,
-                text: `<strong>${character.remarkName}</strong> 评论了你的动态: ${commentData.comment}`
-            });
-             console.log(`[后台互动] ${character.remarkName} 评论了动态 ${commentData.momentId}`);
-            return true;
-        } else {
-            console.warn(`[后台互动] AI返回了无效的互动指令: ${aiResponseText}`);
-            return false;
-        }
-    } catch (error) {
-        console.error("AI后台动态互动失败:", error);
-        return false;
+    if (window.dynamicsHandler && typeof window.dynamicsHandler.triggerProactiveMomentInteraction === 'function') {
+        return window.dynamicsHandler.triggerProactiveMomentInteraction(character);
     }
+    return false;
 }
         init();
     });
@@ -8082,9 +6299,15 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
             if(profile.signature!=null) localStorage.setItem('myTopSignature', profile.signature);
             if(profile.avatar!=null) localStorage.setItem('myTopAvatar', profile.avatar);
             if(profile.heroBg!=null) localStorage.setItem('myTopBg', profile.heroBg);
+            if(profile.name!=null) myTopName = profile.name;
+            if(profile.avatar!=null) myTopAvatar = profile.avatar;
+            window.syncAppState();
         }
         function renderProfileAndSync(){
             const p = loadProfileFromStorage();
+            myTopName = p.name;
+            myTopAvatar = p.avatar;
+            window.syncAppState();
             if(nameEl) nameEl.textContent = p.name;
             if(sigEl) sigEl.textContent = p.signature;
             if(idEl) idEl.textContent = p.id;
@@ -8116,8 +6339,8 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
             }
             if(typeof renderMoments === 'function') {
                 try{ renderMoments(); }catch(e){}
-            } else if(typeof window.renderMomentsSafe === 'function'){
-                try{ window.renderMomentsSafe(); }catch(e){}
+            } else if(window.dynamicsHandler && typeof window.dynamicsHandler.render === 'function'){
+                try{ window.dynamicsHandler.render(); }catch(e){}
             }
         }
 
@@ -8227,19 +6450,8 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
     const $$ = sel => Array.from(document.querySelectorAll(sel));
     function escapeText(t) { return String(t == null ? '' : t); }
 
-    // 1) 初始化 Dexie（使用页面已引入的 Dexie）
-    let db;
-    try {
-      db = new Dexie('AppDB_Moments');
-      db.version(1).stores({
-        moments: 'id,timestamp,commentedBy' // comments 和 likes 存在于对象内
-      });
-      // expose to window so external scripts can access the Dexie instance
-      try{ window.AppDB_Moments = db; }catch(e){}
-
-    } catch (e) {
-      console.error('Dexie init failed', e);
-      showToast('本地数据库初始化失败，动态功能受限');
+    let db = window.AppDB_Moments;
+    if (!db) {
       return;
     }
     // 2) DOM 元素
@@ -8280,146 +6492,17 @@ if (typeof setupMentions === 'function') {
       imageInputGroup.style.display = 'none';
     }
 
-    addImageCheckbox.addEventListener('change', e => {
-      // 如果取消添加图片，清理之前的预览和文件输入
-      if (!addImageCheckbox.checked) { try { postImagePreview.src = ''; } catch(e){} try { const pi = document.getElementById('post-image'); if(pi) pi.value = ''; } catch(e){} }
-
-      imageInputGroup.style.display = e.target.checked ? 'block' : 'none';
-    });
-
-    
-
-    async function fileToDataURLAndCompress(file, maxWidth = 1200, quality = 0.85) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = function(ev) {
-          const img = new Image();
-          img.onload = function() {
-            const w = img.width, h = img.height;
-            let nw = w, nh = h;
-            if (w > maxWidth) {
-              nw = maxWidth;
-              nh = Math.round(h * (maxWidth / w));
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = nw;
-            canvas.height = nh;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, nw, nh);
-            const out = canvas.toDataURL('image/jpeg', quality);
-            resolve(out);
-          };
-          img.onerror = reject;
-          img.src = ev.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+    if (window.dynamicsHandler && typeof window.dynamicsHandler.setupImageHandlers === 'function') {
+      window.dynamicsHandler.setupImageHandlers(addImageCheckbox, imageInputGroup, postImagePreview);
     }
 
     // 4) 发布动态（写入 Dexie）
     
 
-// --- Safe addMoment helper (injected by assistant) ---
-async function addMomentToDB(momentObj) {
-  // 1) Prefer global Dexie instance AppDB_Moments if available
-  try {
-    if (window.AppDB_Moments && window.AppDB_Moments.moments && typeof window.AppDB_Moments.moments.add === 'function') {
-      return window.AppDB_Moments.moments.add(momentObj);
-    }
-  } catch(e){ /* ignore */ }
-
-  // 2) If window.db.moments looks like Dexie, use it
-  try {
-    if (window.db && window.db.moments && typeof window.db.moments.add === 'function') {
-      return window.db.moments.add(momentObj);
-    }
-  } catch(e){ /* ignore */ }
-
-  // 3) Fallback to in-memory array and try to persist via saveData()
-  if (!window.db) window.db = {};
-  if (!Array.isArray(window.db.moments)) window.db.moments = [];
-  window.db.moments.push(momentObj);
-
-  if (typeof window.saveData === 'function') {
-    try { await window.saveData(); } catch(e){ console.warn('saveData fallback failed', e); }
-  }
-
-  // 4) Try to mirror into AppDB_Moments (put to avoid duplicate key issues)
-  try {
-    if (window.AppDB_Moments && window.AppDB_Moments.moments && typeof window.AppDB_Moments.moments.put === 'function') {
-      await window.AppDB_Moments.moments.put(momentObj);
-    }
-  } catch(e){ console.warn('mirror to AppDB_Moments failed', e); }
-
-  return Promise.resolve();
-}
-
 // --- Replaced postForm submit handler (injected by assistant) ---
 postForm.addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-
-  const submitBtn = postForm.querySelector('button[type=\"submit\"]');
-  if (submitBtn) submitBtn.disabled = true;
-
-  // adapt these IDs to match your form inputs if they differ
-  const textEl = document.getElementById('post-text');
-  const addImageEl = document.getElementById('add-image');
-  const imageDescEl = document.getElementById('image-description');
-
-  const text = textEl ? textEl.value.trim() : '';
-  const addImage = addImageEl ? addImageEl.checked : false;
-  const imageDesc = imageDescEl ? imageDescEl.value.trim() : '';
-
-  if (!text && !addImage) {
-    if (submitBtn) submitBtn.disabled = false;
-    if (typeof showToast === 'function') showToast('请输入动态内容');
-    return;
-  }
-
-  if (addImage && !imageDesc) {
-    if (submitBtn) submitBtn.disabled = false;
-    if (typeof showToast === 'function') showToast('请输入图片描述');
-    return;
-  }
-
-  const id = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
-  const momentObj = {
-    id,
-    authorId: (localStorage.getItem('myTopId') || 'user'),
-    authorAvatar: (localStorage.getItem('myTopAvatar') || null),
-    text,
-    imageDesc: addImage ? imageDesc : '',
-    timestamp: Date.now(),
-    commentedBy: [],
-    comments: [],
-    likes: []
-  };
-
-  try {
-    await addMomentToDB(momentObj);
-
-    if (typeof showToast === 'function') showToast('发布成功');
-    try { if (typeof closePostModal === 'function') closePostModal(); } catch(e){}
-
-    // Force immediate re-render of moments
-    if (typeof renderMoments === 'function') {
-      try { await renderMoments(); } catch(e){ console.warn('renderMoments failed', e); }
-    } else if (typeof window.renderMomentsSafe === 'function') {
-      try { await window.renderMomentsSafe(); } catch(e){ console.warn('renderMomentsSafe failed', e); }
-    } else {
-      // last resort: toggle screen class to force repaint
-      const ms = document.getElementById('moments-screen');
-      if (ms) {
-        ms.classList.remove('active');
-        setTimeout(()=>ms.classList.add('active'), 10);
-      }
-    }
-  } catch (e) {
-    console.error('add moment err', e);
-    if (typeof showToast === 'function') showToast('保存失败: ' + (e && e.message ? e.message : String(e)));
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
+  if (window.dynamicsHandler && typeof window.dynamicsHandler.handleDynamicSubmit === 'function') {
+    return window.dynamicsHandler.handleDynamicSubmit(ev, { closePostModal, postForm });
   }
 });
 
@@ -8475,418 +6558,10 @@ postForm.addEventListener('submit', async (ev) => {
     // ▲▲▲▲▲▲ 工具函数补全结束 ▲▲▲▲▲▲
 
     // 5) 渲染动态列表 (包含工具函数的完整版)
-    async function renderMoments() {
-        let list = [];
-        try {
-            // 优先读取最新的数据库
-            if (window.AppDB_Moments && window.AppDB_Moments.moments) {
-                list = await window.AppDB_Moments.moments.orderBy('timestamp').reverse().toArray();
-            } else if (window.db && window.db.moments) {
-                list = window.db.moments.sort((a,b) => b.timestamp - a.timestamp);
-            }
-        } catch(e) { console.warn('Load moments failed', e); }
-
-        const momentsContainer = document.getElementById('moments-container');
-        const momentsEmpty = document.getElementById('moments-empty');
-
-        if (!momentsContainer) return;
-
-        momentsContainer.innerHTML = '';
-
-        if (!list.length) {
-            if (momentsEmpty) momentsEmpty.style.display = 'block';
-            return;
-        } else {
-            if (momentsEmpty) momentsEmpty.style.display = 'none';
+    async function renderMoments(...args) {
+        if (typeof window !== 'undefined' && typeof window.renderMoments === 'function' && window.renderMoments !== renderMoments) {
+            return window.renderMoments(...args);
         }
-
-        const myProfile = loadProfileFromStorage();
-        const myId = myProfile.id || 'user';
-
-        list.forEach(m => {
-            const div = document.createElement('div');
-            div.className = 'moment-item';
-            div.dataset.id = m.id || (m.id = ('m_' + Date.now() + Math.random()));
-
-            // --- 1. 头部信息 ---
-            const head = document.createElement('div');
-            head.className = 'moment-head';
-            const avatar = document.createElement('img');
-            avatar.className = 'moment-avatar';
-            
-            const authorInfo = getAuthorProfile(m.authorId);
-            avatar.src = authorInfo.avatar || m.authorAvatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
-            
-            const meta = document.createElement('div');
-            meta.className = 'moment-meta';
-            const name = document.createElement('div');
-            name.style.fontWeight = '700';
-            name.textContent = authorInfo.name || m.author || '未知用户';
-            
-            const time = document.createElement('div');
-            time.style.fontSize = '12px';
-            time.style.color = '#999';
-            try { time.textContent = new Date(m.timestamp).toLocaleString(); } catch (e) { time.textContent = ''; }
-            
-            meta.appendChild(name);
-            meta.appendChild(time);
-            head.appendChild(avatar);
-            head.appendChild(meta);
-            div.appendChild(head);
-
-            // --- 2. 正文内容 ---
-            const txt = document.createElement('div');
-            txt.className = 'moment-text';
-            txt.textContent = m.text || '';
-            div.appendChild(txt);
-
-            // --- 3. 图片内容 ---
-            if (m.imageData && m.imageData.length > 10) {
-                const im = document.createElement('img');
-                im.className = 'moment-image';
-                im.src = m.imageData;
-                im.alt = m.imageDesc || '动态图片';
-                div.appendChild(im);
-            } else if (m.imageDesc) {
-                const descCard = document.createElement('div');
-                descCard.className = 'moment-image-desc-card';
-                descCard.innerHTML = `<p class="desc-content">${m.imageDesc}</p>`;
-                div.appendChild(descCard);
-            }
-
-            // --- 4. 操作栏 ---
-            const actions = document.createElement('div');
-            actions.className = 'moment-actions';
-            
-            const likeBtn = document.createElement('button');
-            likeBtn.className = 'moment-action-btn';
-            const likes = m.likes || [];
-            if (likes.includes(myId)) likeBtn.classList.add('liked');
-            
-            likeBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg><span>${likes.length > 0 ? likes.length : '点赞'}</span>`;
-            
-            likeBtn.addEventListener('click', async (event) => {
-                event.stopPropagation();
-                const btn = event.currentTarget;
-                const likesWrap = div.querySelector('.moment-likes');
-                const currentLikes = m.likes || [];
-                const myIdx = currentLikes.indexOf(myId);
-
-                if (myIdx > -1) {
-                    currentLikes.splice(myIdx, 1);
-                    btn.classList.remove('liked');
-                } else {
-                    currentLikes.push(myId);
-                    btn.classList.add('liked');
-                }
-                m.likes = currentLikes;
-
-                if (window.AppDB_Moments) await window.AppDB_Moments.moments.put(m);
-
-                btn.querySelector('span').textContent = currentLikes.length > 0 ? currentLikes.length : '点赞';
-                if (likesWrap) {
-                    if (currentLikes.length > 0) {
-                        const likeNames = currentLikes.map(id => getAuthorProfile(id).name).join(', ');
-                        likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likeNames}`;
-                        likesWrap.classList.add('visible');
-                    } else {
-                        likesWrap.classList.remove('visible');
-                    }
-                }
-            });
-
-            const commentBtn = document.createElement('button');
-            commentBtn.className = 'moment-action-btn';
-            commentBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg><span>评论</span>`;
-            
-            commentBtn.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const inputArea = div.querySelector('.moment-comment-input-area');
-                if (inputArea) {
-                    inputArea.classList.toggle('visible');
-                    const input = inputArea.querySelector('input');
-                    const postBtn = inputArea.querySelector('button');
-                    input.value = '';
-                    input.placeholder = '添加评论...';
-                    delete postBtn.dataset.replyToCommentId;
-                    delete postBtn.dataset.replyToAuthorId;
-                    if (inputArea.classList.contains('visible')) input.focus();
-                }
-            });
-
-            actions.appendChild(likeBtn);
-            actions.appendChild(commentBtn);
-            div.appendChild(actions);
-
-            // --- 5. 点赞列表区 ---
-            const likesWrap = document.createElement('div');
-            likesWrap.className = 'moment-likes';
-            if (likes.length > 0) {
-                const likeNames = likes.map(id => getAuthorProfile(id).name).join(', ');
-                likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likeNames}`;
-                likesWrap.classList.add('visible');
-            }
-            div.appendChild(likesWrap);
-
-            // --- 6. 评论列表区 (递归渲染) ---
-            const commentsWrap = document.createElement('div');
-            commentsWrap.className = 'moment-comments';
-
-            const renderCommentsFlat = (comments) => {
-                if (!comments || comments.length === 0) return;
-                
-                const traverse = (list) => {
-                    list.forEach(c => {
-                        const cm = document.createElement('div');
-                        cm.className = 'moment-comment';
-                        cm.dataset.commentId = c.id;
-                        cm.dataset.authorId = c.roleId; 
-                        
-                        const authorName = getAuthorProfile(c.roleId).name;
-                        
-                        let replyHtml = '';
-                        if (c.replyTo) {
-                            const replyToName = getAuthorProfile(c.replyTo).name;
-                            replyHtml = `<span style="color:#888; margin: 0 4px;">回复</span><strong>${replyToName}</strong>`;
-                        }
-
-                        cm.innerHTML = `<strong>${authorName}</strong>${replyHtml}: <span>${c.text}</span>`;
-                        commentsWrap.appendChild(cm);
-
-                        if (c.replies && c.replies.length > 0) {
-                            traverse(c.replies);
-                        }
-                    });
-                };
-                traverse(comments);
-            };
-
-            renderCommentsFlat(m.comments);
-            
-            if (commentsWrap.innerHTML === '') {
-                const none = document.createElement('div');
-                none.style.color='#bbb'; none.textContent = '暂时没有评论';
-                commentsWrap.appendChild(none);
-            }
-            div.appendChild(commentsWrap);
-
-            // --- 7. 评论输入框 ---
-            const commentInputArea = document.createElement('div');
-            commentInputArea.className = 'moment-comment-input-area';
-            commentInputArea.innerHTML = `
-              <input type="text" class="moment-comment-input" placeholder="添加评论...">
-              <button class="post-comment-btn" data-moment-id="${m.id}">发布</button>
-            `;
-            div.appendChild(commentInputArea);
-
-            momentsContainer.appendChild(div);
-        });
-        
-        // 强制接管旧的安全模式
-        window.renderMomentsSafe = renderMoments;
-    }
-
-// --- 新增: 保存评论和点赞的辅助函数 ---
-// --- 新增: 保存评论和点赞的辅助函数 (已修复：AI能识别是“我”评论的) ---
-// --- 修复版：保存评论 (记录 replyTo 字段) ---
-// --- 修复版 V2：保存评论 (并在通知中携带ID给AI) ---
-async function saveUserComment(momentId, commentText, replyToCommentId = null, replyToAuthorName = null) {
-    try {
-        if (!db || !momentId || !commentText) return;
-        const moment = await db.moments.get(momentId);
-        if (!moment) return;
-
-        const myProfile = loadProfileFromStorage();
-        const myId = myProfile.id || 'user';
-        const myGlobalName = myProfile.name || '我';
-        const targetAuthorId = replyToAuthorName; 
-
-        const newComment = {
-            id: `comment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            roleId: myId,
-            text: commentText,
-            ts: Date.now(),
-            replies: [],
-            replyTo: targetAuthorId || null 
-        };
-
-        let notificationTargetCharacter = null;
-        let notificationContent = '';
-        
-        const getUserNameForAi = (targetAi) => {
-            return (targetAi && targetAi.myName) ? targetAi.myName : myGlobalName;
-        };
-
-        // --- 核心修改：在通知内容中，显式包含 momentId 和 commentId ---
-        // 这样 AI 在回复时就能直接抄作业了
-        const idInfo = `(请在回复指令中使用此ID数据 -> momentId: "${momentId}", commentId: "${newComment.id}")`;
-
-        if (replyToCommentId) {
-            // 是回复评论
-            const findComment = (comments) => {
-                for (const c of comments) {
-                    if (c.id === replyToCommentId) return c;
-                    if (c.replies && c.replies.length > 0) {
-                        const found = findComment(c.replies);
-                        if (found) return found;
-                    }
-                }
-                return null;
-            };
-            const parentComment = findComment(moment.comments || []);
-            
-            if (parentComment) {
-                parentComment.replies = parentComment.replies || [];
-                parentComment.replies.push(newComment);
-                
-                if (targetAuthorId && targetAuthorId.startsWith('char_')) {
-                    notificationTargetCharacter = window.db.characters.find(c => c.id === targetAuthorId);
-                    if (notificationTargetCharacter) {
-                        const nameToUse = getUserNameForAi(notificationTargetCharacter);
-                        const momentSnippet = moment.text.substring(0, 10) + '...';
-                        notificationContent = `[system: ${nameToUse} 回复了你对动态 "${momentSnippet}" 的评论: "${commentText}"。${idInfo}]`;
-                    }
-                }
-            } else {
-                 moment.comments = moment.comments || [];
-                 moment.comments.push(newComment);
-            }
-        } else {
-            // 是直接评论动态
-            moment.comments = moment.comments || [];
-            moment.comments.push(newComment);
-            
-            if (moment.authorId && moment.authorId.startsWith('char_')) {
-                notificationTargetCharacter = window.db.characters.find(c => c.id === moment.authorId);
-                if (notificationTargetCharacter) {
-                    const nameToUse = getUserNameForAi(notificationTargetCharacter);
-                    const momentSnippet = moment.text.substring(0, 10) + '...';
-                    notificationContent = `[system: ${nameToUse} 评论了你的动态 "${momentSnippet}": "${commentText}"。${idInfo}]`;
-                }
-            }
-        }
-
-        moment.commentedBy = moment.commentedBy || [];
-        if (!moment.commentedBy.includes(myId)) {
-            moment.commentedBy.push(myId);
-        }
-
-        await db.moments.put(moment);
-
-        if (notificationTargetCharacter && notificationContent) {
-            const contextMessage = {
-                id: `msg_context_${Date.now()}`,
-                role: 'user',
-                content: notificationContent,
-                parts: [{ type: 'text', text: notificationContent }],
-                timestamp: Date.now()
-            };
-            notificationTargetCharacter.history.push(contextMessage);
-            if (typeof window.saveData === 'function') {
-                await window.saveData();
-            }
-        }
-        
-        renderMoments();
-    } catch (e) {
-        console.error(`Failed to save user comment`, e);
-        if (typeof showToast === 'function') showToast('评论失败');
-    }
-}
-
-
-
-async function saveMomentComment(momentId, authorId, commentText) {
-    try {
-        if (!window.AppDB_Moments || !window.AppDB_Moments.moments || !momentId) return;
-        const moment = await window.AppDB_Moments.moments.get(momentId);
-        if (moment) {
-            moment.comments = moment.comments || [];
-            moment.commentedBy = moment.commentedBy || [];
-            moment.comments.push({
-                roleId: authorId,
-                text: commentText,
-                ts: Date.now()
-            });
-            if (!moment.commentedBy.includes(authorId)) {
-                moment.commentedBy.push(authorId);
-            }
-            await window.AppDB_Moments.moments.put(moment);
-            if (typeof renderMoments === 'function') renderMoments();
-        }
-    } catch (e) {
-        console.error(`Failed to save comment for moment ${momentId}:`, e);
-    }
-}
-
-async function saveMomentLike(momentId, authorId) {
-    try {
-        if (!window.AppDB_Moments || !window.AppDB_Moments.moments || !momentId) return;
-        const moment = await window.AppDB_Moments.moments.get(momentId);
-        if (moment) {
-            moment.likes = moment.likes || [];
-            if (!moment.likes.includes(authorId)) {
-                moment.likes.push(authorId);
-                await window.AppDB_Moments.moments.put(moment);
-                if (typeof renderMoments === 'function') renderMoments();
-            }
-        }
-    } catch (e) {
-        console.error(`Failed to save like for moment ${momentId}:`, e);
-    }
-}
-// --- end 新增 ---
-
-
-    // 6) 获取尚未被某角色评论的动态（limit） -> 修复版：只获取用户自己的动态
-    async function getPendingMomentsForRole(roleId, limit = 5) {
-      // 1. 获取“我”的ID
-      let myId = 'user'; // 默认ID
-      
-      // 尝试从全局函数获取最新ID
-      if (typeof window.loadProfileFromStorage === 'function') {
-          const profile = window.loadProfileFromStorage();
-          if (profile && profile.id) myId = profile.id;
-      } else {
-          // 保底方案：直接查localStorage
-          myId = localStorage.getItem('myTopId') || 'user';
-      }
-
-      // 2. 从数据库获取所有动态
-      let all = [];
-      if (db && db.moments) {
-          all = await db.moments.orderBy('timestamp').reverse().toArray();
-      }
-
-      // 3. 核心筛选逻辑
-      const pending = all.filter(m => 
-          m.authorId === myId && // 【关键修改】只筛选作者ID等于“我”的动态
-          !(m.commentedBy || []).includes(roleId) // 且该角色还没评论过
-      );
-
-      return pending.slice(0, limit);
-    }
-
-    // 7) 将 AI 的评论写回数据库并标记 commentedBy
-    async function markMomentsCommentedBy(commentsArray, roleId) {
-      // commentsArray: [{momentId, commentText}, ...]
-      try {
-        await db.transaction('rw', db.moments, async () => {
-          for (const c of commentsArray) {
-            const m = await db.moments.get(c.momentId);
-            if (!m) continue;
-            const cbSet = new Set(m.commentedBy || []);
-            cbSet.add(roleId);
-            m.commentedBy = Array.from(cbSet);
-            m.comments = m.comments || [];
-            m.comments.push({ roleId, text: c.commentText, ts: Date.now() });
-            await db.moments.put(m);
-          }
-        });
-        renderMoments();
-      } catch (e) {
-        console.error('mark comments err', e);
-      }
     }
 
     // 8) hook 底部导航显示逻辑（只在聊天列表 screen 可见时显示）
@@ -8935,8 +6610,9 @@ if (phoneScreen && bottomNavHost) {
               const replyToAuthorId = postBtn.dataset.replyToAuthorId || null;
 
               if (commentText) {
-                  // 将 ID 传给函数的最后一个参数
-                  await saveUserComment(momentId, commentText, replyToCommentId, replyToAuthorId);
+                  if (window.dynamicsHandler && typeof window.dynamicsHandler.saveComment === 'function') {
+                      await window.dynamicsHandler.saveComment(momentId, commentText, replyToCommentId, replyToAuthorId);
+                  }
                   
                   input.value = '';
                   input.placeholder = '添加评论...';
@@ -8975,43 +6651,6 @@ if (phoneScreen && bottomNavHost) {
         navButtons.forEach(b => b.classList.toggle('active', b.getAttribute('data-target') === 'chat-list-screen'));
       }
       
-async function saveAiReplyToComment(momentId, commentId, replyText, aiAuthorId) {
-    try {
-        if (!db || !momentId || !commentId || !replyText) return;
-        const moment = await db.moments.get(momentId);
-        if (!moment) return;
-
-        // 递归查找要回复的评论
-        const findCommentAndAddReply = (comments) => {
-            for (const c of comments) {
-                if (c.id === commentId) {
-                    c.replies = c.replies || [];
-                    c.replies.push({
-                        id: `comment_${Date.now()}`,
-                        roleId: aiAuthorId,
-                        text: replyText,
-                        ts: Date.now(),
-                        replyTo: c.roleId // 记录这条回复是回复给谁的
-                    });
-                    return true;
-                }
-                if (c.replies && findCommentAndAddReply(c.replies)) {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        if (findCommentAndAddReply(moment.comments || [])) {
-            await db.moments.put(moment);
-            if (typeof renderMoments === 'function') {
-                renderMoments();
-            }
-        }
-    } catch (e) {
-        console.error(`Failed to save AI reply for comment ${commentId}:`, e);
-    }
-}
       // 位置更新函数：根据 chat-list-screen 的 active 类显示/隐藏
 function updateBottomNavVisibilityByActive() {
     const chatCls = document.getElementById('chat-list-screen');
@@ -9071,7 +6710,9 @@ function updateBottomNavVisibilityByActive() {
         }
 
         // pending moments
-        const pending = await getPendingMomentsForRole(roleId, 5);
+        const pending = (window.dynamicsHandler && typeof window.dynamicsHandler.getPendingMomentsForRole === 'function')
+          ? await window.dynamicsHandler.getPendingMomentsForRole(roleId, 5)
+          : [];
 
         // build a structured prompt (we'll ask AI to return JSON)
         let prompt = `系统：请按 JSON 格式输出：{"chat_reply":"...","moment_comments":[{"momentId":"...","comment":"..."}]}\n\n`;
@@ -9137,7 +6778,9 @@ function updateBottomNavVisibilityByActive() {
             return { momentId: mc.momentId || mc.momentId || mc.id || mc.id, commentText: mc.comment || mc.commentText || mc.text || '' };
           }).filter(x => x.momentId);
           if (normalized.length) {
-            await markMomentsCommentedBy(normalized, roleId);
+            if (window.dynamicsHandler && typeof window.dynamicsHandler.markMomentsCommentedBy === 'function') {
+              await window.dynamicsHandler.markMomentsCommentedBy(normalized, roleId);
+            }
           }
         }
 
@@ -9160,350 +6803,12 @@ function updateBottomNavVisibilityByActive() {
     // 如果初始存在 moments screen active，则 render
     if (currentActive && currentActive.id === 'moments-screen') renderMoments();
 
-    // --- 将关键函数暴露到全局作用域，以便其他模块调用 ---
-    window.getPendingMomentsForRole = getPendingMomentsForRole;
-    window.saveMomentComment = saveMomentComment;
-    window.saveMomentLike = saveMomentLike;
-    window.markMomentsCommentedBy = markMomentsCommentedBy;
-    window.renderMoments = renderMoments; // 暴露渲染函数，以便外部模块可以刷新动态列表
+    if (typeof window.renderMoments !== 'function' || window.renderMoments === renderMoments) {
+        window.renderMoments = renderMoments; // 暴露渲染函数，以便外部模块可以刷新动态列表
+    }
 
   }); // DOMContentLoaded end
 })();
-
-
-
-// Begin: Render moments safe patch (injected for step4) 
-
-(function(){
-  console.log('[injected patch] renderMomentsSafe initializing...');
-  try {
-    const momentsScreen = document.getElementById('moments-screen');
-    if (!momentsScreen) {
-      console.warn('[injected patch] #moments-screen not found.');
-    }
-    // Ensure a container exists
-    let momentsContainer = document.getElementById('moments-container');
-    if (!momentsContainer && momentsScreen) {
-      const content = momentsScreen.querySelector('.content') || momentsScreen;
-      momentsContainer = document.createElement('div');
-      momentsContainer.id = 'moments-container';
-      content.appendChild(momentsContainer);
-      console.log('[injected patch] created #moments-container');
-    }
-    // Safe Dexie wrapper
-    let _db = null;
-    if (typeof Dexie !== 'undefined') {
-        // Use the existing global instance if available
-        if (window.AppDB_Moments) {
-            _db = window.AppDB_Moments;
-        } else {
-            try {
-                _db = new Dexie('AppDB_Moments');
-                _db.version(1).stores({ moments: 'id,timestamp,commentedBy' });
-                window.AppDB_Moments = _db; // Ensure it's globally available
-            } catch (e) {
-                console.warn('[injected patch] Dexie init failed:', e);
-                _db = null;
-            }
-        }
-    } else {
-        console.warn('[injected patch] Dexie not available.');
-    }
-
-// ▼▼▼ 在 renderMomentsSafe 函数的正上方，粘贴这个新函数 ▼▼▼
-function getAuthorProfile(authorId) {
-    // 默认备用信息
-    let profile = { name: '未知用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg' };
-
-    // 1. 检查是不是用户自己
-    const myProfile = (typeof loadProfileFromStorage === 'function') ? loadProfileFromStorage() : {};
-    if (authorId === (myProfile.id || 'user')) {
-        return { name: myProfile.name || '我', avatar: myProfile.avatar };
-    }
-
-    // 2. 在所有AI角色中查找
-    if (window.db && Array.isArray(window.db.characters)) {
-        const character = window.db.characters.find(c => c.id === authorId);
-        if (character) {
-            return { name: character.remarkName, avatar: character.avatar };
-        }
-    }
-
-    // 3. 在所有群聊的成员中查找 (以防是群聊成员发的动态)
-    if (window.db && Array.isArray(window.db.groups)) {
-        for (const group of window.db.groups) {
-            if (Array.isArray(group.members)) {
-                const member = group.members.find(m => m.id === authorId);
-                if (member) {
-                    return { name: member.groupNickname, avatar: member.avatar };
-                }
-            }
-        }
-    }
-    
-    return profile; // 如果都找不到，返回默认信息
-}
-// ▲▲▲ 添加结束 ▲▲▲
-
-// ▼▼▼ 用这个新版本，完整替换掉旧的 renderMomentsSafe 函数 ▼▼▼
-    window.renderMomentsSafe = async function renderMomentsSafe() {
-      try {
-        const container = document.getElementById('moments-container') || (document.getElementById('moments-screen') && document.getElementById('moments-screen').querySelector('#moments-container'));
-        if (!container) {
-          console.warn('[injected patch] No container found for moments.');
-          return;
-        }
-        let list = [];
-        if (_db && _db.moments) {
-          try {
-            list = await _db.moments.orderBy('timestamp').reverse().toArray();
-          } catch (e) {
-            console.error('[injected patch] Failed reading moments from IndexedDB:', e);
-            list = [];
-          }
-        } else {
-          try {
-            const maybeDb = window.AppDB_Moments || null;
-            if (maybeDb && maybeDb.moments) {
-              list = await maybeDb.moments.orderBy('timestamp').reverse().toArray();
-            }
-          } catch (e) {
-            list = [];
-          }
-        }
-
-        container.innerHTML = '';
-        const momentsEmpty = document.getElementById('moments-empty');
-        if (!list || !list.length) {
-          if (momentsEmpty) momentsEmpty.style.display = 'block';
-          else {
-            const p = document.createElement('p');
-            p.className = 'placeholder-text';
-            p.textContent = '还没有动态，点击右上角发布吧~';
-            container.appendChild(p);
-          }
-          return;
-        } else {
-          if (momentsEmpty) momentsEmpty.style.display = 'none';
-        }
-
-        list.forEach(m => {
-          try {
-            const div = document.createElement('div'); div.className = 'moment-item';
-            div.dataset.id = m.id || (m.id = (Math.random()+''+Date.now()));
-            const head = document.createElement('div'); head.className = 'moment-head';
-            const avatar = document.createElement('img'); avatar.className = 'moment-avatar';
-            const meta = document.createElement('div'); meta.className = 'moment-meta';
-            const name = document.createElement('div'); name.style.fontWeight='700';
-            const time = document.createElement('div'); time.style.fontSize='12px'; time.style.color='#999';
-            try { time.textContent = new Date(m.timestamp).toLocaleString(); } catch(e) { time.textContent = ''; }
-            
-            // --- 核心修改在这里 ---
-            const authorInfo = getAuthorProfile(m.authorId); // 使用新函数查找作者信息
-            name.textContent = authorInfo.name || m.author || '未知用户'; // 优先用新找到的名字，找不到再用快照里的旧名字
-            avatar.src = authorInfo.avatar || m.authorAvatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg'; // 优先用新找到的头像，找不到再用快照里的
-            // --- 修改结束 ---
-
-            meta.appendChild(name);
-            meta.appendChild(time);
-            head.appendChild(avatar);
-            head.appendChild(meta);
-            div.appendChild(head);
-
-            const txt = document.createElement('div'); txt.className='moment-text'; txt.textContent = m.text || '';
-            div.appendChild(txt);
-
-            if (m.imageData && m.imageData !== 'null' && m.imageData !== 'undefined' && m.imageData.length>10) {
-              const im = document.createElement('img'); im.className = 'moment-image';
-              im.src = m.imageData;
-              im.alt = m.imageDesc ? m.imageDesc : (m.text || '动态图片');
-              div.appendChild(im);
-              if (m.imageDesc) {
-                const desc = document.createElement('div'); desc.style.fontSize='13px'; desc.style.color='#666';
-                desc.textContent = '图片：' + m.imageDesc;
-                div.appendChild(desc);
-              }
-            } else if (m.imageDesc) {
-              const descCard = document.createElement('div'); descCard.className = 'moment-image-desc-card';
-              if (m.id) descCard.dataset.momentId = m.id || '';
-              const descContent = document.createElement('p'); descContent.className = 'desc-content';
-              descContent.textContent = m.imageDesc;
-              descCard.appendChild(descContent);
-              descCard.setAttribute('role', 'img');
-              descCard.setAttribute('aria-label', m.imageDesc);
-              descCard.addEventListener('click', function () { /* show detail */ });
-              div.appendChild(descCard);
-            }
-
-            const actions = document.createElement('div');
-            actions.className = 'moment-actions';
-            
-            const likeBtn = document.createElement('button');
-            likeBtn.className = 'moment-action-btn';
-            const likes = m.likes || [];
-            const myProfile = loadProfileFromStorage();
-            const myId = myProfile.id || 'user';
-            if (likes.includes(myId)) {
-                likeBtn.classList.add('liked');
-            }
-            likeBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg><span>${likes.length > 0 ? likes.length : '点赞'}</span>`;
-            
-likeBtn.addEventListener('click', async (event) => {
-                event.stopPropagation(); // 防止点击穿透
-                const btn = event.currentTarget;
-                const momentItem = btn.closest('.moment-item');
-                
-                // 1. 更新本地数据状态
-                const currentLikes = m.likes || [];
-                const myIdx = currentLikes.indexOf(myId);
-
-                if (myIdx > -1) {
-                    currentLikes.splice(myIdx, 1);
-                    btn.classList.remove('liked');
-                } else {
-                    currentLikes.push(myId);
-                    btn.classList.add('liked');
-                }
-                m.likes = currentLikes;
-
-                // --- 【核弹级修复】现场连接数据库进行保存 ---
-                try {
-                    // 不管全局变量在不在，直接新建一个连接，保证 put 方法存在
-                    const safeDb = new Dexie('AppDB_Moments');
-                    safeDb.version(1).stores({ moments: 'id,timestamp,commentedBy' });
-                    await safeDb.moments.put(m);
-                    // console.log('点赞状态已保存');
-                } catch (e) {
-                    console.error("数据库写入失败:", e);
-                    alert("点赞保存失败，请检查控制台");
-                }
-                // ------------------------------------------
-
-                // 2. 更新按钮文字
-                const span = btn.querySelector('span');
-                if (span) {
-                    span.textContent = currentLikes.length > 0 ? currentLikes.length : '点赞';
-                }
-
-                // 3. 更新点赞人名列表显示
-                const likesWrap = momentItem.querySelector('.moment-likes');
-                if (likesWrap) {
-                    if (currentLikes.length > 0) {
-                        const likeNames = currentLikes.map(likeId => window.getAuthorNameById(likeId)).join(', ');
-                        likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likeNames}`;
-                        likesWrap.classList.add('visible');
-                    } else {
-                        likesWrap.classList.remove('visible');
-                    }
-                }
-            });
-
-            const commentBtn = document.createElement('button');
-            commentBtn.className = 'moment-action-btn';
-            commentBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg><span>评论</span>`;
-            commentBtn.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const btn = event.currentTarget;
-                const momentItem = btn.closest('.moment-item');
-                if (momentItem) {
-                    const inputArea = momentItem.querySelector('.moment-comment-input-area');
-                    if (inputArea) {
-                        inputArea.classList.toggle('visible');
-                        if (inputArea.classList.contains('visible')) {
-                            inputArea.querySelector('input').focus();
-                        }
-                    }
-                }
-            });
-
-            actions.appendChild(likeBtn);
-            actions.appendChild(commentBtn);
-            div.appendChild(actions);
-
-            if (likes.length > 0) {
-                const likesWrap = document.createElement('div');
-                likesWrap.className = 'moment-likes visible';
-                const likeNames = likes.map(likeId => window.getAuthorNameById(likeId)).join(', ');
-                likesWrap.innerHTML = `<span class="like-icon">♥</span> ${likeNames}`;
-                div.appendChild(likesWrap);
-            }
-
-            const commentsWrap = document.createElement('div'); commentsWrap.className = 'moment-comments';
-            if (m.comments && m.comments.length) {
-              m.comments.forEach(c => {
-                const cm = document.createElement('div'); cm.className='moment-comment';
-                const authorName = window.getAuthorNameById(c.roleId || c.role);
-                cm.textContent = `${authorName}：${c.text}`;
-                commentsWrap.appendChild(cm);
-              });
-            } else {
-              const none = document.createElement('div'); none.style.color='#bbb'; none.textContent = '暂时没有评论';
-              commentsWrap.appendChild(none);
-            }
-            div.appendChild(commentsWrap);
-
-            const commentInputArea = document.createElement('div');
-            commentInputArea.className = 'moment-comment-input-area';
-            commentInputArea.innerHTML = `
-              <input type="text" class="moment-comment-input" placeholder="添加评论...">
-              <button class="post-comment-btn" data-moment-id="${m.id}">发布</button>
-            `;
-            div.appendChild(commentInputArea);
-            container.appendChild(div);
-          } catch (innerErr) {
-            console.error('[injected patch] render single moment failed', innerErr, m);
-          }
-        });
-
-      } catch (err) {
-        console.error('[injected patch] renderMomentsSafe failed', err);
-        const container = document.getElementById('moments-container') || (document.getElementById('moments-screen') && document.getElementById('moments-screen').querySelector('.content'));
-        if (container) {
-          container.innerHTML = '<div style="color:#b00;padding:12px;border-radius:10px;background:#fff8f8;">加载动态时出错（详情见 Console）</div>';
-        }
-      }
-    };
-// ▲▲▲ 替换结束 ▲▲▲
-  
-
-    // Attach to app:screenChanged and mutation observer
-    document.addEventListener('app:screenChanged', (ev) => {
-      try {
-        if (ev && ev.detail && ev.detail.targetId === 'moments-screen') {
-          window.renderMomentsSafe();
-        }
-      } catch (e) { console.error('[injected patch] app:screenChanged handler failed', e); }
-    });
-
-    const phone = document.querySelector('.phone-screen') || document.body;
-    const mo = new MutationObserver((mutations) => {
-  try {
-    // 只在 phone 节点本身的 class 发生变化时才触发（避免子元素的 class 变动导致重渲染）
-    const phoneClassChanged = mutations.some(m =>
-      m.type === 'attributes' && m.attributeName === 'class' && m.target === phone
-    );
-    if (!phoneClassChanged) return;
-
-    const active = document.querySelector('.screen.active');
-    if (active && active.id === 'moments-screen') {
-      window.renderMomentsSafe();
-    }
-  } catch (e) { console.error('[injected patch] MutationObserver callback failed', e); }
-});
-// 仅观察 phone 自身的 attributes（不要 subtree=true）
-mo.observe(phone, { attributes: true, subtree: false, attributeFilter: ['class'] });
-
-
-    // try initial render
-    setTimeout(() => {
-      try { window.renderMomentsSafe(); } catch(e) { console.warn('[injected patch] initial render failed', e); }
-    }, 300);
-
-  } catch (e) {
-    console.error('[injected patch] initialization failed', e);
-  }
-})();
-
 
 
 
@@ -9642,7 +6947,7 @@ mo.observe(phone, { attributes: true, subtree: false, attributeFilter: ['class']
                             }
                             // After DB updates, re-render moments so DOM reflects DB changes
                             if(typeof renderMoments === 'function') try{ renderMoments(); }catch(e){}
-                            else if(typeof window.renderMomentsSafe === 'function') try{ window.renderMomentsSafe(); }catch(e){}
+                            else if(window.dynamicsHandler && typeof window.dynamicsHandler.render === 'function') try{ window.dynamicsHandler.render(); }catch(e){}
                         }catch(e){}
                     })();
                 }
@@ -9862,23 +7167,6 @@ fileInput.addEventListener('change', async (e)=>{
         if(p && p.avatar) tryUpdateDBMomentsAvatar(p.avatar);
       } catch(e){}
     };
-  }
-
-  // If renderMomentsSafe exists, wrap it to call our sync after running original
-  if(typeof window.renderMomentsSafe === 'function'){
-    try {
-      var _origRenderMomentsSafe = window.renderMomentsSafe;
-      window.renderMomentsSafe = function(){
-        try {
-          var res = _origRenderMomentsSafe.apply(this, arguments);
-          // after render, ensure our avatars are applied
-          setTimeout(function(){ updateTopProfileAndAvatars(); }, 20);
-          return res;
-        } catch(e){
-          try { return _origRenderMomentsSafe.apply(this, arguments); } catch(e){ return undefined; }
-        }
-      };
-    } catch(e){}
   }
 
   // Also wrap any generic renderMoments function if present
