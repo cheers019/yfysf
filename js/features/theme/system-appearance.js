@@ -435,7 +435,7 @@ function renderTutorialContent() {
         loadingTutorialBackup = true;
         try {
             const localStorageData = {};
-            const presetKeys = ['fontPresets', 'apiPresets', 'bubblePresets', 'myPersonaPresets', 'soul_bond_roster'];
+            const presetKeys = ['fontPresets', 'apiPresets', 'bubblePresets', 'soul_bond_roster'];
             presetKeys.forEach(key => {
                 const data = localStorage.getItem(key);
                 if (data) {

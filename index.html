@@ -859,17 +859,6 @@
                         id="setting-my-persona" placeholder="描述你希望在对话中扮演的形象。"></textarea>
 
 
-<!-- 管理 Modal（样式与气泡预设管理一致） -->
-<div id="mypersona-presets-modal" class="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);justify-content:center;align-items:center;z-index:9999;">
-  <div class="modal-window" style="max-width:520px;background:var(--panel-bg,#fff);padding:14px;border-radius:10px;box-shadow:0 12px 36px rgba(10,10,20,0.12);">
-    <h3 style="margin:0 0 10px 0;font-size:16px;">管理我的人设预设</h3>
-    <div id="mypersona-presets-list" style="max-height:340px; overflow:auto; margin-bottom:12px;"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;">
-      <button type="button" id="mypersona-close-modal" class="btn btn-primary" style="padding:8px 12px;border-radius:8px;">关闭</button>
-    </div>
-  </div>
-</div>
-<!-- === /我的人设预设控制 === -->
 </div>
                 <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
                 <div class="form-group">
@@ -2924,15 +2913,6 @@
 </div>
 <!-- ▲▲▲ 替换结束 ▲▲▲ -->
 <!-- ▲▲▲ 替换结束 ▲▲▲ -->
-<div id="persona-presets-modal" class="modal-overlay" style="display:none;">
-    <div class="modal-window" style="max-width:520px;">
-        <h3 style="margin:0 0 10px 0;">管理人设预设</h3>
-        <div id="persona-presets-list" style="max-height:340px; overflow:auto; margin-bottom:12px;"></div>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button id="persona-close-modal" class="btn btn-primary" style="padding:8px 12px;">关闭</button>
-        </div>
-    </div>
-</div>
 <!-- ▼▼▼ 将这两个全新的 div 添加到 </body> 标签之前 ▼▼▼ -->
 
 <!-- 1. "找人代付" AI选择弹窗 -->
@@ -3630,6 +3610,10 @@
 <script src="js/features/toolbox/call-detail-modal.js"></script>
     <script src="js/features/toolbox/call-log-manager.js"></script>
     <script src="js/features/toolbox/tb-core.js"></script>
+<script src="js/features/group-chat/group-manager.js"></script>
+<script src="js/features/group-chat/group-logic.js"></script>
+<script src="js/features/modules/ai-theater.js"></script>
+<script src="js/features/modules/ai-heart-path.js"></script>
 <script src="script.js"></script>
 
 </body>

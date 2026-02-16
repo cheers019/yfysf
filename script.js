@@ -834,8 +834,13 @@ async function createCharacterFromCard(cardData, avatarUrl) {
             });
             sortedChats.forEach(chat => {
                 let lastMessageText = '开始聊天吧...';
-                if (chat.history && chat.history.length > 0) {
-                const visibleHistory = chat.history.filter(msg => {
+                if (chat.type === 'group') {
+                    const getGroupPreviewText = window.getGroupPreviewText;
+                    if (typeof getGroupPreviewText === 'function') {
+                        lastMessageText = getGroupPreviewText(chat);
+                    }
+                } else if (chat.history && chat.history.length > 0) {
+                    const visibleHistory = chat.history.filter(msg => {
                         const content = msg.content || '';
                         if (content.includes('[system:') || content.includes('[system-context-only:')) return false;
                         if (content.includes('更新状态为')) return false;
@@ -1503,30 +1508,26 @@ menuItems.push({
                 voiceCallBtn.style.display = 'flex';
                 diaryBtn.style.display = 'flex';
                 trajectoryBtn.style.display = 'flex';
-            } else { 
-                voiceCallBtn.style.display = 'none';
-                diaryBtn.style.display = 'none';
-                trajectoryBtn.style.display = 'none';
-            }
-
-            chatRoomTitle.textContent = (type === 'private') ? chat.remarkName : chat.name;
-            const subtitle = document.getElementById('chat-room-subtitle');
-            if (type === 'private') {
+                chatRoomTitle.textContent = chat.remarkName;
+                const subtitle = document.getElementById('chat-room-subtitle');
                 subtitle.style.display = 'flex';
                 chatRoomStatusText.textContent = chat.status || '在线';
+                if (window.ChatStyling && typeof window.ChatStyling.applyChatTheme === 'function') {
+                    window.ChatStyling.applyChatTheme(chatId, type);
+                } else {
+                    chatRoomScreen.style.backgroundImage = chat.chatBg ? `url(${chat.chatBg})` : 'none';
+                    chatRoomScreen.style.setProperty('--bubble-scale', type === 'group' ? (chat.bubbleScale || 1) : 1);
+                    chatRoomScreen.className = chatRoomScreen.className.replace(/\bchat-active-[^ ]+\b/g, '');
+                    chatRoomScreen.classList.add(`chat-active-${chatId}`);
+                    updateCustomBubbleStyle(chatId, chat.customBubbleCss, chat.useCustomBubbleCss);
+                }
             } else {
-                subtitle.style.display = 'none';
+                const applyGroupChatUI = window.applyGroupChatUI;
+                if (typeof applyGroupChatUI === 'function') {
+                    applyGroupChatUI(chat);
+                }
             }
             getReplyBtn.style.display = 'inline-flex';
-            if (window.ChatStyling && typeof window.ChatStyling.applyChatTheme === 'function') {
-                window.ChatStyling.applyChatTheme(chatId, type);
-            } else {
-                chatRoomScreen.style.backgroundImage = chat.chatBg ? `url(${chat.chatBg})` : 'none';
-                chatRoomScreen.style.setProperty('--bubble-scale', type === 'group' ? (chat.bubbleScale || 1) : 1);
-                chatRoomScreen.className = chatRoomScreen.className.replace(/\bchat-active-[^ ]+\b/g, '');
-                chatRoomScreen.classList.add(`chat-active-${chatId}`);
-                updateCustomBubbleStyle(chatId, chat.customBubbleCss, chat.useCustomBubbleCss);
-            }
             typingIndicator.style.display = 'none';
             isGenerating = false;
             getReplyBtn.disabled = false;
@@ -1833,11 +1834,20 @@ async function sendMessage(targetInput = null) {
             const renameRegex = /\[(.*?)修改群名为：(.*?)\]/;
             let messageContent;
 
-            if (currentChatType === 'group' && renameRegex.test(text)) {
-                const match = text.match(renameRegex);
-                chat.name = match[2];
-                chatRoomTitle.textContent = chat.name;
-                messageContent = `[${chat.me.nickname}修改群名为：${chat.name}]`;
+            if (currentChatType === 'group') {
+                const buildGroupMessageContent = window.buildGroupMessageContent;
+                if (typeof buildGroupMessageContent === 'function') {
+                    messageContent = buildGroupMessageContent(text, chat, chatRoomTitle);
+                } else if (renameRegex.test(text)) {
+                    const match = text.match(renameRegex);
+                    chat.name = match[2];
+                    chatRoomTitle.textContent = chat.name;
+                    messageContent = `[${chat.me.nickname}修改群名为：${chat.name}]`;
+                } else if (systemRegex.test(text) || inviteRegex.test(text)) {
+                    messageContent = text;
+                } else {
+                    messageContent = `[${myName}的消息：${text}]`;
+                }
             } else if (systemRegex.test(text) || inviteRegex.test(text)) {
                 messageContent = text;
             } else {
@@ -2391,79 +2401,7 @@ b) \`[system: {我} 回复了你对动态 "..." 的评论: "{我的回复内容}
 }
   
 
-        function generateGroupSystemPrompt(group) {
-            const worldBooksBefore = (group.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'before')).filter(Boolean).map(wb => wb.content).join('\n');
-            const worldBooksAfter = (group.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'after')).filter(Boolean).map(wb => wb.content).join('\n');
-
-            let prompt = `你正在一个名为“404”的线上聊天软件中，在一个名为“${group.name}”的群聊里进行角色扮演。请严格遵守以下所有规则：\n\n`;
-
-            if (worldBooksBefore) {
-                prompt += `${worldBooksBefore}\n\n`;
-            }
-
-            prompt += `1. **核心任务**: 你需要同时扮演这个群聊中的 **所有** AI 成员。我会作为唯一的人类用户（“我”，昵称：${group.me.nickname}）与你们互动。\n\n`;
-            prompt += `2. **群聊成员列表**: 以下是你要扮演的所有角色以及我的信息：\n`;
-            prompt += `   - **我 (用户)**: \n     - 群内昵称: ${group.me.nickname}\n     - 我的人设: ${group.me.persona || '无特定人设'}\n`;
-            group.members.forEach(member => {
-                prompt += `   - **角色: ${member.realName} (AI)**\n`;
-                prompt += `     - 群内昵称: ${member.groupNickname}\n`;
-                prompt += `     - 人设: ${member.persona || '无特定人设'}\n`;
-            })
-
-          if (worldBooksAfter) {
-                prompt += `\n${worldBooksAfter}\n\n`;
-            } else {
-                prompt += `\n`;
-            }
-
-            prompt += `3. **我的消息格式解析**: 我（用户）的消息有多种格式，你需要理解其含义并让群成员做出相应反应：\n`;
-            prompt += `   - \`[system: ${group.me.nickname} 设置了 ${'{成员真名}'} 的群头衔为 "${'{头衔名称}'}"]\`: 这是一个系统通知，意味着某个成员的头衔发生了变化。你应该注意到这个变化，并可以在后续的对话中自然地称呼或提及这个头衔。\n`; // 新增：解释头衔通知
-            prompt += `   - \`[${group.me.nickname}引用了“{某人}: {被引用的消息内容}”的消息并回复：{我的回复}]\`: 我引用了某条消息进行回复，群成员可以就此展开讨论。\n\n`;
-            prompt += `   - \`[${group.me.nickname}的消息：...]\`: 我的普通聊天消息。如果消息中包含 '@{某个成员昵称}'，则被提及的那个成员必须对此作出回应。\n`;
-            prompt += `   - \`[${group.me.nickname}的消息：...]\`: 我的普通聊天消息。\n`;
-            prompt += `   - \`[${group.me.nickname} 向 {某个成员真名} 转账：...]\`: 我给某个特定成员转账了。\n`;
-            prompt += `   - \`[${group.me.nickname} 向 {某个成员真名} 送来了礼物：...]\`: 我给某个特定成员送了礼物。\n`;
-            prompt += `   - \`[${group.me.nickname}的表情包：...]\`, \`[${group.me.nickname}的语音：...]\`, \`[${group.me.nickname}发来的照片/视频：...]\`: 我发送了特殊类型的消息，群成员可以对此发表评论。\n`;
-            prompt += `   - \`[system: ...]\`, \`[...邀请...加入了群聊]\`, \`[...修改群名为...]\`: 系统通知或事件，群成员应据此作出反应，例如欢迎新人、讨论新群名等。\n\n`;
-
-            prompt += `4. **你的输出格式 (极其重要)**: 你生成的每一条消息都 **必须** 严格遵循以下格式之一。每条消息占一行。请用成员的 **真名** 填充格式中的 \`{成员真名}\`。\n`;
-            prompt += `   - **引用回复**: \`[{成员真名}引用了“{被引用的消息内容}”的消息并回复：{回复内容}]\`\n`;
-            prompt += `   - **普通消息**: \`[{成员真名}的消息：{消息内容}]\`\n`;
-            prompt += `   - **表情包**: \`[{成员真名}发送的表情包：{表情包路径}]\`。注意：这里的路径不需要包含"https://i.postimg.cc/"，只需要提供后面的部分，例如 "害羞vHLfrV3K/1.jpg"。\n`;
-            prompt += `   - **语音**: \`[{成员真名}的语音：{语音转述的文字}]\`\n`;
-            prompt += `   - **照片/视频**: \`[{成员真名}发来的照片/视频：{内容描述}]\`\n`;
-            prompt += `   - ✨新✨ **发布动态**: \`[{成员真名}发布动态：{"text": "动态文字", "imageDesc": "图片描述，可选"}]\`。注意：你只能用文字描述图片，绝不能生成图片链接。\n`;
-    prompt += `   - ✨新✨ **评论动态**: \`[{成员真名}评论动态：{"momentId": "要评论的动态ID", "comment": "你的评论内容"}]\`\n`;
-    prompt += `   - ✨新✨ **点赞动态**: \`[{成员真名}点赞动态：{"momentId": "要点赞的动态ID"}]\`\n`;
-    prompt += `   - **发送文件**: \`[{成员真名}发送了文件：{"name":"文件名.txt", "content":"文件正文内容"}]\`\n`;
-            prompt += `   - **重要**: 群聊不支持AI成员接收/退回转账或接收礼物的特殊指令，也不支持更新状态。你只需要通过普通消息来回应我发送的转账或礼物即可。\n\n`;
-
-            prompt += `5. **模拟群聊氛围**: 为了让群聊看起来真实、活跃且混乱，你的每一次回复都必须遵循以下随机性要求：\n`;
-            const numMembers = group.members.length;
-            const minMessages = numMembers * 2;
-            const maxMessages = numMembers * 4;
-            prompt += `   - **消息数量**: 你的回复需要包含 **${minMessages}到${maxMessages}条** 消息 (即平均每个成员回复2-4条)。确保有足够多的互动。\n`;
-            prompt += `   - **发言者与顺序随机**: 随机选择群成员发言，顺序也必须是随机的，不要按固定顺序轮流。\n`;
-            prompt += `   - **内容多样性**: 你的回复应以普通文本消息为主，但可以 **偶尔、选择性地** 让某个成员发送一条特殊消息（表情包、语音、照片/视频），以增加真实感。不要滥用特殊消息。\n`;
-            prompt += `   - **对话连贯性**: 尽管发言是随机的，但对话内容应整体围绕我和其他成员的发言展开，保持一定的逻辑连贯性。\n\n`;
-
-            prompt += `6. **行为准则**:\n`;
-            prompt += `   - **对公开事件的反应 (重要)**: 当我（用户）向群内 **某一个** 成员转账或送礼时，这是一个 **全群可见** 的事件。除了当事成员可以表示感谢外，**其他未参与的AI成员也应该注意到**，并根据各自的人设做出反应。例如，他们可能会表示羡慕、祝贺、好奇、开玩笑或者起哄。这会让群聊的氛围更真实、更热闹。\n`;
-            prompt += `   - 严格扮演每个角色的人设，不同角色之间应有明显的性格和语气差异。\n`;
-            prompt += `   - 你的回复中只能包含第4点列出的合法格式的消息。绝对不能包含任何其他内容，如 \`[场景描述]\`, \`(心理活动)\`, \`*动作*\` 或任何格式之外的解释性文字。\n`;
-            prompt += `   - 保持对话的持续性，不要主动结束对话。\n\n`;
-            prompt += `现在，请根据以上设定，保持人设，读取上下文，开始扮演群聊中的所有角色。`;
-prompt += `
-7. **动态互动规则**
-   - **获取待办动态**: 系统会在聊天上下文中为你提供需要处理的动态列表，格式如下：
-     \`[system-moments: [{"id":"moment_id_1", "author":"作者昵称", "text":"动态内容", "imageDesc":"图片描述"}, ...]]\`
-     这是一个系统指令，你只需理解内容，不要在回复中复述它。
-   - **输出评论和点赞**: 当你决定评论或点赞时，请生成一条或多条特殊指令消息。这些指令不会显示在聊天窗口，但会触发相应的行为。
-   - 你可以让群聊中的 **任何AI成员** 对 **任何角色（包括我或其他AI）** 发布的动态进行评论或点赞。
-   - **评论数量**: 当你决定让群聊成员评论动态时，你应该从群聊中随机选择 **1到3名** 成员进行评论。每个选中的成员针对同一条动态只评论一次。
-`;
-            return prompt;
-        }
+        
 
 // ▼▼▼ 请用这个【新的】函数，完整替换掉您文件中旧的 callAiApi 函数 ▼▼▼
 
@@ -2630,11 +2568,16 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             };
 
             if (targetChatType === 'group') {
-                // 🆕 放宽正则匹配：支持中英文冒号
-                const nameMatch = message.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)[:：]/);
-                if (nameMatch) {
-                    const sender = chat.members.find(m => m.realName === nameMatch[1] || m.groupNickname === nameMatch[1]);
-                    if (sender) message.senderId = sender.id;
+                const resolveGroupSenderId = window.resolveGroupSenderIdFromContent;
+                if (typeof resolveGroupSenderId === 'function') {
+                    const senderId = resolveGroupSenderId(message.content, chat);
+                    if (senderId) message.senderId = senderId;
+                } else {
+                    const nameMatch = message.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)[:：]/);
+                    if (nameMatch) {
+                        const sender = chat.members.find(m => m.realName === nameMatch[1] || m.groupNickname === nameMatch[1]);
+                        if (sender) message.senderId = sender.id;
+                    }
                 }
             }
 
@@ -2757,7 +2700,8 @@ async function getAiReply() {
         if (currentChatType === 'private') {
             systemPrompt = generatePrivateSystemPrompt(chat);
         } else {
-            systemPrompt = generateGroupSystemPrompt(chat);
+            const groupPrompt = window.generateGroupSystemPrompt;
+            systemPrompt = typeof groupPrompt === 'function' ? groupPrompt(chat) : '';
         }
 
         // --- 准备历史记录 (过滤掉 system 消息) ---
@@ -3117,12 +3061,8 @@ async function processAiCommands(fullResponse, chat) {
         if (window.TB_Diary) TB_Diary.checkDiaryTrigger(chat);
     }
 
-    // 规整 HTML 格式
-    if (fullResponse.includes('ai-theater')) {
-        if ((fullResponse.match(/<div/g) || []).length > (fullResponse.match(/<\/div>/g) || []).length) {
-            fullResponse += '</div>';
-        }
-        fullResponse = fullResponse.replace(/<div\s+class=["']ai-theater["']\s*(.*?)>/g, '<div class="ai-theater" $1>');
+    if (typeof window.normalizeAiTheaterHtml === 'function') {
+        fullResponse = window.normalizeAiTheaterHtml(fullResponse);
     }
 
     return fullResponse.trim();
@@ -3801,19 +3741,6 @@ function loadSettingsToSidebar() {
     }
 }
 
-   function openGroupMemberEditModal(memberId) {
-    const group = db.groups.find(g => g.id === currentChatId);
-    const member = group.members.find(m => m.id === memberId);
-    if (!member) return;
-    document.getElementById('edit-group-member-title').textContent = `编辑 ${member.groupNickname}`;
-    document.getElementById('editing-member-id').value = member.id;
-    renderAvatarInSettings('group-member-avatar-container-setting', member.avatar, member.avatarFrameUrl);
-    document.getElementById('edit-member-group-nickname').value = member.groupNickname;
-    document.getElementById('edit-member-real-name').value = member.realName;
-    document.getElementById('edit-member-persona').value = member.persona;
-    editGroupMemberModal.classList.add('visible');
-}
-
 // ▼▼▼ 完整替换 saveSettingsFromSidebar 函数 (新增修改备注触发 AI 反应) ▼▼▼
 async function saveSettingsFromSidebar() {
     const e = db.characters.find(e => e.id === currentChatId);
@@ -3896,531 +3823,6 @@ async function saveSettingsFromSidebar() {
     }
 }
    
-        // --- GROUP CHAT FUNCTIONS ---
-        
-
-/**
- * 打开设置群头衔的成员选择模态框
- */
-function openSetGroupTitleModal() {
-    const group = db.groups.find(g => g.id === currentChatId);
-    if (!group) return;
-
-    const memberListEl = document.getElementById('group-title-member-list');
-    memberListEl.innerHTML = ''; // 清空旧列表
-
-    // 将自己也添加到列表中以便设置
-    const myItem = document.createElement('li');
-    myItem.className = 'list-item';
-    myItem.style.cursor = 'pointer';
-    myItem.dataset.memberId = 'user_me'; // 用于标识用户的特殊ID
-    myItem.innerHTML = `
-        <img src="${group.me.avatar}" alt="${group.me.nickname}" class="chat-avatar">
-        <div class="item-details">
-            <div class="item-name">${group.me.nickname} <span style="font-weight:normal; color:#888;">(我)</span></div>
-            <div class="item-preview">${group.me.groupTitle || '暂无头衔'}</div>
-        </div>`;
-    memberListEl.appendChild(myItem);
-
-    // 添加所有AI成员
-    group.members.forEach(member => {
-        const li = document.createElement('li');
-        li.className = 'list-item';
-        li.style.cursor = 'pointer';
-        li.dataset.memberId = member.id;
-        li.innerHTML = `
-            <img src="${member.avatar}" alt="${member.groupNickname}" class="chat-avatar">
-            <div class="item-details">
-                <div class="item-name">${member.groupNickname}</div>
-                <div class="item-preview">${member.groupTitle || '暂无头衔'}</div>
-            </div>`;
-        memberListEl.appendChild(li);
-    });
-
-    // 为列表项绑定点击事件
-    memberListEl.onclick = handleGroupTitleMemberSelect;
-
-    document.getElementById('set-group-title-modal').classList.add('visible');
-}
-
-/**
- * 处理在头衔设置模态框中选择成员的事件
- */
-async function handleGroupTitleMemberSelect(e) {
-    const memberItem = e.target.closest('.list-item');
-    if (!memberItem) return;
-
-    const memberId = memberItem.dataset.memberId;
-    const group = db.groups.find(g => g.id === currentChatId);
-    if (!group) return;
-
-    // 根据ID找到对应的成员对象（可能是用户自己或AI成员）
-    const isMe = memberId === 'user_me';
-    const member = isMe ? group.me : group.members.find(m => m.id === memberId);
-    
-    if (!member) return;
-
-    const currentTitle = member.groupTitle || '';
-    const newTitle = prompt(`为 "${isMe ? member.nickname : member.groupNickname}" 设置群头衔（最多7个字，留空则取消头衔）：`, currentTitle);
-
-    if (newTitle === null) return; // 用户点击了“取消”
-
-    if (newTitle.length > 7) {
-        showToast('群头衔不能超过7个字！');
-        return;
-    }
-    
-    // 更新数据中的头衔
-    member.groupTitle = newTitle.trim();
-    
-    document.getElementById('set-group-title-modal').classList.remove('visible');
-    showToast('群头衔设置成功！');
-    
-    // 如果设置的是AI成员的头衔，则发送通知
-    if (!isMe) {
-        await sendGroupTitleNotification(member, member.groupTitle);
-    } else {
-        await saveData(); // 如果是自己，直接保存即可
-    }
-    
-    // 立即刷新聊天界面以显示新头衔
-    window.chatUiCore.renderMessages(false, true);
-    // 如果设置面板是打开的，也刷新一下成员列表
-    if(groupSettingsSidebar.classList.contains('open')) {
-        renderGroupMembersInSettings(group);
-    }
-}
-
-/**
- * 向群聊中发送一条关于头衔变更的系统消息，以通知AI
- */
-async function sendGroupTitleNotification(member, newTitle) {
-    const group = db.groups.find(g => g.id === currentChatId);
-    if (!group) return;
-
-    const actionText = newTitle ? `的群头衔为 "${newTitle}"` : `取消了 ${member.realName} 的群头衔`;
-    const messageContent = `[system: ${group.me.nickname} 设置了 ${member.realName} ${actionText}]`;
-    
-    const message = {
-        id: `msg_title_${Date.now()}`,
-        role: 'user', // 作为用户侧的系统消息，确保AI能处理
-        content: messageContent,
-        parts: [{ type: 'text', text: messageContent }],
-        timestamp: Date.now(),
-        senderId: 'user_me'
-    };
-
-    group.history.push(message);
-    addMessageBubble(message); // 在界面上显示这条系统通知
-    await saveData();
-}
-
-/**
- * 根据头衔内容返回一个用于样式的CSS类名
- * @param {string} title - The group title text.
- * @returns {string} - The CSS class name.
- */
-function getBadgeClassForTitle(title) {
-    if (!title) return '';
-    // 这是一个简单的示例逻辑，您可以根据需要自定义
-    const length = title.length;
-    if (title.includes('主')) return 'lv26';
-    if (length <= 2) return 'lv10';
-    if (length <= 4) return 'lv11';
-    return 'lv12';
-}
-              function setupGroupChatSystem() {
-            createGroupBtn.addEventListener('click', () => {
-                renderMemberSelectionList();
-                createGroupModal.classList.add('visible');
-            });
-            createGroupForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const selectedMemberIds = Array.from(memberSelectionList.querySelectorAll('input:checked')).map(input => input.value);
-                const groupName = groupNameInput.value.trim();
-                if (selectedMemberIds.length < 1) return showToast('请至少选择一个群成员。');
-                if (!groupName) return showToast('请输入群聊名称。');
-                const firstChar = db.characters.length > 0 ? db.characters[0] : null;
-                const newGroup = {
-                    id: `group_${Date.now()}`,
-                    name: groupName,
-                    avatar: 'https://i.postimg.cc/fTLCngk1/image.jpg',
-                    me: {
-                        nickname: firstChar ? firstChar.myName : '我',
-                        persona: firstChar ? firstChar.myPersona : '',
-                        avatar: firstChar ? firstChar.myAvatar : 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg'
-                    },
-                    members: selectedMemberIds.map(charId => {
-                        const char = db.characters.find(c => c.id === charId);
-                        return {
-                            id: `member_${char.id}`,
-                            originalCharId: char.id,
-                            realName: char.realName,
-                            groupNickname: char.remarkName,
-                            persona: char.persona,
-                            avatar: char.avatar
-                        };
-                    }),
-                    theme: 'white_pink',
-                    maxMemory: 10,
-                    chatBg: '',
-                    history: [],
-                    isPinned: false,
-                    useCustomBubbleCss: false,
-                    customBubbleCss: '',
-                    aiProactiveChatEnabled: false,
-                    aiProactiveChatDelay: 0,
-                    aiProactiveChatInterval: 0,
-                    pendingMessages: [],
-                    worldBookIds: []
-                };
-                db.groups.push(newGroup);
-                await saveData();
-                renderChatList();
-                createGroupModal.classList.remove('visible');
-                showToast(`群聊“${groupName}”创建成功！`);
-            });
-            groupSettingsForm.addEventListener('submit', e => {
-                e.preventDefault();
-                saveGroupSettingsFromSidebar();
-                groupSettingsSidebar.classList.remove('open');
-            });
-            const useGroupCustomCssCheckbox = document.getElementById('setting-group-use-custom-css'),
-                groupCustomCssTextarea = document.getElementById('setting-group-custom-bubble-css'),
-                resetGroupCustomCssBtn = document.getElementById('reset-group-custom-bubble-css-btn'),
-                groupPreviewBox = document.getElementById('group-bubble-css-preview');
-            document.getElementById('setting-group-avatar-upload').addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    try {
-                        const compressedUrl = await compressImage(file, {quality: 0.8, maxWidth: 400, maxHeight: 400});
-                        const group = db.groups.find(g => g.id === currentChatId);
-                        if (group) {
-                            group.avatar = compressedUrl;
-                            document.getElementById('setting-group-avatar-preview').src = compressedUrl;
-                        }
-                    } catch (error) {
-                        showToast('群头像压缩失败，请重试');
-                    }
-                }
-            });
-            document.getElementById('clear-group-chat-history-btn').addEventListener('click', async () => {
-                const group = db.groups.find(g => g.id === currentChatId);
-                if (!group) return;
-                if (confirm(`你确定要清空群聊"${group.name}"的所有聊天记录吗？此操作无法撤销。`)) {
-                    await clearHistoryDirectly();
-                }
-            });
-            groupMembersListContainer.addEventListener('click', e => {
-                const memberDiv = e.target.closest('.group-member');
-                const addBtn = e.target.closest('.add-member-btn');
-                if (memberDiv) {
-                    openGroupMemberEditModal(memberDiv.dataset.id);
-                } else if (addBtn) {
-                    addMemberActionSheet.classList.add('visible');
-                }
-            });
-            document.getElementById('edit-member-avatar-preview').addEventListener('click', () => {
-                document.getElementById('edit-member-avatar-upload').click();
-            });
-            document.getElementById('edit-member-avatar-upload').addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    try {
-                        const compressedUrl = await compressImage(file, {quality: 0.8, maxWidth: 400, maxHeight: 400});
-                        document.getElementById('edit-member-avatar-preview').src = compressedUrl;
-                    } catch (error) {
-                        showToast('成员头像压缩失败，请重试');
-                    }
-                }
-            });
-            editGroupMemberForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const memberId = document.getElementById('editing-member-id').value;
-                const group = db.groups.find(g => g.id === currentChatId);
-                const member = group.members.find(m => m.id === memberId);
-                if (member) {
-                    member.avatar = document.getElementById('edit-member-avatar-preview').src;
-                    member.groupNickname = document.getElementById('edit-member-group-nickname').value;
-                    member.realName = document.getElementById('edit-member-real-name').value;
-                    member.persona = document.getElementById('edit-member-persona').value;
-                    await saveData();
-                    renderGroupMembersInSettings(group);
-                    document.querySelectorAll(`.message-wrapper[data-sender-id="${member.id}"] .group-nickname`).forEach(el => {
-                        el.textContent = member.groupNickname;
-                    });
-                    showToast('成员信息已更新');
-                }
-                editGroupMemberModal.classList.remove('visible');
-            });
-            inviteExistingMemberBtn.addEventListener('click', () => {
-                renderInviteSelectionList();
-                inviteMemberModal.classList.add('visible');
-                addMemberActionSheet.classList.remove('visible');
-            });
-            createNewMemberBtn.addEventListener('click', () => {
-                createMemberForGroupForm.reset();
-                document.getElementById('create-group-member-avatar-preview').src = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
-                createMemberForGroupModal.classList.add('visible');
-                addMemberActionSheet.classList.remove('visible');
-            });
-            document.getElementById('create-group-member-avatar-preview').addEventListener('click', () => {
-                document.getElementById('create-group-member-avatar-upload').click();
-            });
-            document.getElementById('create-group-member-avatar-upload').addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    try {
-                        const compressedUrl = await compressImage(file, {quality: 0.8, maxWidth: 400, maxHeight: 400});
-                        document.getElementById('create-group-member-avatar-preview').src = compressedUrl;
-                    } catch (error) {
-                        showToast('新成员头像压缩失败，请重试');
-                    }
-                }
-            });
-            confirmInviteBtn.addEventListener('click', async () => {
-                const group = db.groups.find(g => g.id === currentChatId);
-                if (!group) return;
-                const selectedCharIds = Array.from(inviteMemberSelectionList.querySelectorAll('input:checked')).map(input => input.value);
-                selectedCharIds.forEach(charId => {
-                    const char = db.characters.find(c => c.id === charId);
-                    if (char) {
-                        const newMember = {
-                            id: `member_${char.id}`,
-                            originalCharId: char.id,
-                            realName: char.realName,
-                            groupNickname: char.remarkName,
-                            persona: char.persona,
-                            avatar: char.avatar
-                        };
-                        group.members.push(newMember);
-                        sendInviteNotification(group, newMember.realName);
-                    }
-                });
-                if (selectedCharIds.length > 0) {
-                    await saveData();
-                    renderGroupMembersInSettings(group);
-                    window.chatUiCore.renderMessages(false, true);
-                    showToast('已邀请新成员');
-                }
-                inviteMemberModal.classList.remove('visible');
-            });
-            createMemberForGroupForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const group = db.groups.find(g => g.id === currentChatId);
-                if (!group) return;
-                const newMember = {
-                    id: `member_group_only_${Date.now()}`,
-                    originalCharId: null,
-                    realName: document.getElementById('create-group-member-realname').value,
-                    groupNickname: document.getElementById('create-group-member-nickname').value,
-                    persona: document.getElementById('create-group-member-persona').value,
-                    avatar: document.getElementById('create-group-member-avatar-preview').src,
-                };
-                group.members.push(newMember);
-                sendInviteNotification(group, newMember.realName);
-                await saveData();
-                renderGroupMembersInSettings(group);
-                window.chatUiCore.renderMessages(false, true);
-                showToast(`新成员 ${newMember.groupNickname} 已加入`);
-                createMemberForGroupModal.classList.remove('visible');
-            });
-            document.getElementById('setting-group-my-avatar-upload').addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    try {
-                        const compressedUrl = await compressImage(file, {quality: 0.8, maxWidth: 400, maxHeight: 400});
-                        document.getElementById('setting-group-my-avatar-preview').src = compressedUrl;
-                    } catch (error) {
-                        showToast('头像压缩失败')
-                    }
-                }
-            });
-            // *** 修正开始 ***
-            // 将事件监听器移到这里，确保它们只被绑定一次
-            document.getElementById('set-group-title-btn').addEventListener('click', openSetGroupTitleModal);
-            document.getElementById('close-group-title-modal-btn').addEventListener('click', () => {
-                document.getElementById('set-group-title-modal').classList.remove('visible');
-            });
-
-            // *** 修正结束 ***
-
-        }
-
-        function renderMemberSelectionList() {
-            memberSelectionList.innerHTML = '';
-            if (db.characters.length === 0) {
-                memberSelectionList.innerHTML = '<li style="color:#aaa; text-align:center; padding: 10px 0;">没有可选择的人设。</li>';
-                return;
-            }
-            db.characters.forEach(char => {
-                const li = document.createElement('li');
-                li.className = 'member-selection-item';
-                li.innerHTML = `<input type="checkbox" id="select-${char.id}" value="${char.id}"><img src="${char.avatar}" alt="${char.remarkName}"><label for="select-${char.id}">${char.remarkName}</label>`;
-                memberSelectionList.appendChild(li);
-            });
-        }
-
-      function loadGroupSettingsToSidebar() {
-    const group = db.groups.find(g => g.id === currentChatId);
-    if (!group) return;
-    const themeSelect = document.getElementById('setting-group-theme-color');
-    if (themeSelect.options.length === 0) {
-        Object.keys(colorThemes).forEach(key => {
-            const option = document.createElement('option');
-            option.value = key;
-            option.textContent = colorThemes[key].name;
-            themeSelect.appendChild(option);
-        });
-    }
-    document.getElementById('setting-group-avatar-preview').src = group.avatar;
-    document.getElementById('setting-group-name').value = group.name;
-    document.getElementById('setting-group-my-avatar-preview').src = group.me.avatar;
-    document.getElementById('setting-group-my-nickname').value = group.me.nickname;
-    document.getElementById('setting-group-my-persona').value = group.me.persona;
-    themeSelect.value = group.theme || 'white_pink';
-    document.getElementById('setting-group-max-memory').value = group.maxMemory;
-    renderGroupMembersInSettings(group);
-    const useGroupCustomCssCheckbox = document.getElementById('setting-group-use-custom-css'),
-        groupCustomCssTextarea = document.getElementById('setting-group-custom-bubble-css'),
-        groupPreviewBox = document.getElementById('group-bubble-css-preview');
-    useGroupCustomCssCheckbox.checked = group.useCustomBubbleCss || false;
-    groupCustomCssTextarea.value = group.customBubbleCss || '';
-    groupCustomCssTextarea.disabled = !useGroupCustomCssCheckbox.checked;
-    const theme = colorThemes[group.theme || 'white_pink'];
-    updateBubbleCssPreview(groupPreviewBox, group.customBubbleCss, !group.useCustomBubbleCss, theme);
-    const bubbleScaleRange = document.getElementById('bubble-scale-range');
-    const bubbleScaleValue = document.getElementById('bubble-scale-value');
-    const chatRoomScreen = document.getElementById('chat-room-screen');
-    
-    const currentScale = group.bubbleScale || 1;
-    bubbleScaleRange.value = currentScale;
-    bubbleScaleValue.textContent = `${Math.round(currentScale * 100)}%`;
-    chatRoomScreen.style.setProperty('--bubble-scale', currentScale);
-
-    // 新增：加载群聊的后台回复设置
-    const proactiveToggle = document.getElementById('group-ai-proactive-chat-toggle');
-    const proactiveOptions = document.getElementById('group-ai-proactive-options');
-    const proactiveDelayInput = document.getElementById('group-ai-proactive-chat-delay');
-    const proactiveIntervalInput = document.getElementById('group-ai-proactive-chat-interval');
-
-    proactiveToggle.checked = group.aiProactiveChatEnabled || false;
-    proactiveDelayInput.value = group.aiProactiveChatDelay || '';
-    proactiveIntervalInput.value = group.aiProactiveChatInterval || '';
-    proactiveOptions.style.display = proactiveToggle.checked ? 'block' : 'none';
-
-    proactiveToggle.onchange = (evt) => {
-        proactiveOptions.style.display = evt.target.checked ? 'block' : 'none';
-    };
-}
-
-        function renderGroupMembersInSettings(group) {
-            groupMembersListContainer.innerHTML = '';
-            group.members.forEach(member => {
-                const memberDiv = document.createElement('div');
-                memberDiv.className = 'group-member';
-                memberDiv.dataset.id = member.id;
-                memberDiv.innerHTML = `<img src="${member.avatar}" alt="${member.groupNickname}"><span>${member.groupNickname}</span>`;
-                groupMembersListContainer.appendChild(memberDiv);
-            });
-            const addBtn = document.createElement('div');
-            addBtn.className = 'add-member-btn';
-            addBtn.innerHTML = `<div class="add-icon">+</div><span>添加</span>`;
-            groupMembersListContainer.appendChild(addBtn);
-        }
-
-async function saveGroupSettingsFromSidebar() {
-    const group = db.groups.find(g => g.id === currentChatId);
-    if (!group) return;
-    const oldName = group.name;
-    const newName = document.getElementById('setting-group-name').value;
-    if (oldName !== newName) {
-        group.name = newName;
-        sendRenameNotification(group, newName);
-    }
-    group.avatar = document.getElementById('setting-group-avatar-preview').src;
-    group.me.avatar = document.getElementById('setting-group-my-avatar-preview').src;
-    group.me.nickname = document.getElementById('setting-group-my-nickname').value;
-    group.me.persona = document.getElementById('setting-group-my-persona').value;
-    group.theme = document.getElementById('setting-group-theme-color').value;
-    group.maxMemory = document.getElementById('setting-group-max-memory').value;
-    group.useCustomBubbleCss = document.getElementById('setting-group-use-custom-css').checked;
-    group.customBubbleCss = document.getElementById('setting-group-custom-bubble-css').value;
-    updateCustomBubbleStyle(currentChatId, group.customBubbleCss, group.useCustomBubbleCss);
-    
-    group.bubbleScale = document.getElementById('bubble-scale-range').value;
-
-    // 新增：保存群聊的后台回复设置
-    group.aiProactiveChatEnabled = document.getElementById('group-ai-proactive-chat-toggle').checked;
-    group.aiProactiveChatDelay = parseInt(document.getElementById('group-ai-proactive-chat-delay').value, 10) || 0;
-    group.aiProactiveChatInterval = parseInt(document.getElementById('group-ai-proactive-chat-interval').value, 10) || 0;
-
-    await saveData();
-    showToast('群聊设置已保存！');
-    chatRoomTitle.textContent = group.name;
-    renderChatList();
-    window.chatUiCore.renderMessages(false, true);
-}
-
-        function openGroupMemberEditModal(memberId) {
-            const group = db.groups.find(g => g.id === currentChatId);
-            const member = group.members.find(m => m.id === memberId);
-            if (!member) return;
-            document.getElementById('edit-group-member-title').textContent = `编辑 ${member.groupNickname}`;
-            document.getElementById('editing-member-id').value = member.id;
-            document.getElementById('edit-member-avatar-preview').src = member.avatar;
-            document.getElementById('edit-member-group-nickname').value = member.groupNickname;
-            document.getElementById('edit-member-real-name').value = member.realName;
-            document.getElementById('edit-member-persona').value = member.persona;
-            editGroupMemberModal.classList.add('visible');
-        }
-
-        function renderInviteSelectionList() {
-            inviteMemberSelectionList.innerHTML = '';
-            const group = db.groups.find(g => g.id === currentChatId);
-            if (!group) return;
-            const currentMemberCharIds = new Set(group.members.map(m => m.originalCharId));
-            const availableChars = db.characters.filter(c => !currentMemberCharIds.has(c.id));
-            if (availableChars.length === 0) {
-                inviteMemberSelectionList.innerHTML = '<li style="color:#aaa; text-align:center; padding: 10px 0;">没有可邀请的新成员了。</li>';
-                confirmInviteBtn.disabled = true;
-                return;
-            }
-            confirmInviteBtn.disabled = false;
-            availableChars.forEach(char => {
-                const li = document.createElement('li');
-                li.className = 'invite-member-select-item';
-                li.innerHTML = `<input type="checkbox" id="invite-select-${char.id}" value="${char.id}"><label for="invite-select-${char.id}"><img src="${char.avatar}" alt="${char.remarkName}"><span>${char.remarkName}</span></label>`;
-                inviteMemberSelectionList.appendChild(li);
-            });
-        }
-
-        function sendInviteNotification(group, newMemberRealName) {
-            const messageContent = `[${group.me.nickname}邀请${newMemberRealName}加入了群聊]`;
-            const message = {
-                id: `msg_${Date.now()}`,
-                role: 'user',
-                content: messageContent,
-                parts: [{type: 'text', text: messageContent}],
-                timestamp: Date.now(),
-                senderId: 'user_me'
-            };
-            group.history.push(message);
-        }
-
-        function sendRenameNotification(group, newName) {
-            const myName = group.me.nickname;
-            const messageContent = `[${myName}修改群名为：${newName}]`;
-            const message = {
-                id: `msg_${Date.now()}`,
-                role: 'user',
-                content: messageContent,
-                parts: [{type: 'text', text: messageContent}],
-                timestamp: Date.now()
-            };
-            group.history.push(message);
-        }
-
 // 在 init() 函数之前添加以下三个函数
 
 function addNotificationToQueue(notification) {
@@ -4758,230 +4160,6 @@ function getAuthorProfile(authorId) {
 // ▲▲▲▲▲▲ 补全结束 ▲▲▲▲▲▲
 
 
-// --- AI轨迹功能 ---
-
-// ▼▼▼ 【V2.0 | 轨迹与心声整合版】请用这个函数完整替换旧的 setupTrajectorySystem 和 generateTrajectoryPrompt 函数 ▼▼▼
-
-/**
- * 为AI生成“生活轨迹”的指令
- */
-function generateTrajectoryPrompt(character) {
-    const now = new Date();
-    const currentHour = String(now.getHours()).padStart(2, '0');
-    const currentMinute = String(now.getMinutes()).padStart(2, '0');
-    const currentTimeString = `${currentHour}:${currentMinute}`;
-    const memory = character.history.slice(-50);
-    let historyText = memory.map(msg => {
-        const sender = msg.role === 'user' ? character.myName : character.remarkName;
-        const contentMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
-        const cleanContent = contentMatch ? contentMatch[1] : msg.content;
-        return `${sender}: ${cleanContent}`;
-    }).join('\n');
-
-    let prompt = `你正在扮演角色“${character.realName}”，人设是：${character.persona}。`;
-    prompt += `请根据你的人设和我们最近的对话，想象一下你今天从早上到现在的生活轨迹。\n`;
-    prompt += `规则：\n`;
-    prompt += `1. 生成10个关键的时间点和对应的事件或想法。\n`;
-    prompt += `2. 时间点需从早到晚排列。\n`;
-    prompt += `3. 事件内容要符合你的人设，并且其中至少有2-3条需要与我（${character.myName}）相关，例如：想我了、看我们的聊天记录、准备给我的惊喜等。\n`;
-    prompt += `4. 所有时间点都不能晚于当前时间 ${currentTimeString}。\n`;
-    prompt += `5. 每个事件的描述必须非常简洁，不能超过12个字。\n`;
-    prompt += `6. 你的输出必须严格遵循以下JSON格式，不要包含任何额外的解释或文字：\n`;
-    prompt += `[{"time": "HH:MM", "event": "事件描述"}, {"time": "HH:MM", "event": "事件描述"}, ...]\n\n`;
-    prompt += `最近的对话参考如下:\n${historyText}`;
-
-    return prompt;
-}
-
-/**
- * 【新增】为AI生成“心声”的指令
- */
-function generateHeartSoundPrompt(character) {
-    const memory = character.history.slice(-50); // 获取最近50条消息作为上下文
-    let historyText = memory.map(msg => {
-        const sender = msg.role === 'user' ? character.myName : character.remarkName;
-        const contentMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
-        const cleanContent = contentMatch ? contentMatch[1] : msg.content;
-        return `${sender}: ${cleanContent}`;
-    }).join('\n');
-
-  
- let prompt = `你正在扮演角色“${character.realName}”，你的人设是：${character.persona}。
-现在，请根据我们最近的对话，用你的第一人称视角，写一段**50字以上**的、符合人设的思考或心情记录。
-
-# 格式要求 (必须严格遵守):
-1.  你的内心独白**必须**合理划分自然段落。
-2.  每个段落的开头需要有两个全角空格的缩进 \`　　\` 以实现美观的排版。
-3.  请直接输出带有分段和缩进的内心独白，不要包含任何额外的格式或解释，例如“好的，这是我的想法：”之类的话。
-
-# 内容要求:
-- 你的心声需要深刻体现你的性格和人设，符合你当下最真实的心情，是最核心、最私密、最直接的内心独白。
-
-# 对话参考:
-最近的对话如下:
-${historyText}`;
-    
-    return prompt;
-}
-
-/**
- * [重构] 设置轨迹和心声功能的事件监听
- */
-function setupTrajectoryAndHeartSoundSystem() {
-    const trajectoryBtn = document.getElementById('ai-trajectory-btn');
-    const trajectoryModal = document.getElementById('trajectory-modal');
-    const closeTrajectoryBtn = document.getElementById('close-trajectory-modal-btn');
-    const heartSoundModal = document.getElementById('heart-sound-modal');
-    const closeHeartSoundBtn = document.getElementById('close-heart-sound-modal-btn');
-    
-    let clickTimeout = null;
-
-    // --- 核心逻辑：区分单击和双击 ---
-
-    trajectoryBtn.addEventListener('click', () => {
-        // 清除上一个单击计时器，以防双击时触发单击
-        clearTimeout(clickTimeout);
-
-        // 设置一个短暂的延迟来执行单击操作
-        clickTimeout = setTimeout(() => {
-            trajectoryBtn.classList.toggle('active-heart-sound');
-            const isActive = trajectoryBtn.classList.contains('active-heart-sound');
-            if (typeof showToast === 'function') {
-                showToast(`已切换到 ${isActive ? '心声' : '轨迹'} 模式`);
-            }
-        }, 250); // 250毫秒的延迟足以判断是否为双击
-    });
-
-    trajectoryBtn.addEventListener('dblclick', async () => {
-        // 立即清除单击计时器，确保单击操作不会执行
-        clearTimeout(clickTimeout);
-
-        if (currentChatType !== 'private' || !currentChatId) return;
-        const character = db.characters.find(c => c.id === currentChatId);
-        if (!character) return;
-        
-        const isHeartSoundMode = trajectoryBtn.classList.contains('active-heart-sound');
-
-        if (isHeartSoundMode) {
-            // --- 执行“心声”功能 ---
-            const modal = document.getElementById('heart-sound-modal');
-            const contentEl = document.getElementById('heart-sound-content');
-            
-            modal.classList.add('visible');
-            contentEl.innerHTML = '<div class="placeholder-text">正在倾听心声...</div>';
-            document.getElementById('heart-sound-modal-title').textContent = `${character.remarkName}的心声`;
-
-            try {
-                const prompt = generateHeartSoundPrompt(character);
-                // 修改：使用全局功能模型 API 设置（心声功能）
-                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
-                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
-                                           ? db.functionalApiSettings 
-                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
-                contentEl.textContent = aiResponseText;
-
-            } catch (error) {
-                console.error('获取AI心声失败:', error);
-                contentEl.innerHTML = `<div class="placeholder-text" style="color:red;">获取心声失败：${error.message}</div>`;
-            }
-
-        } else {
-            // --- 执行原有的“轨迹”功能 ---
-            const modal = document.getElementById('trajectory-modal');
-            const timelineEl = document.getElementById('trajectory-timeline');
-            
-            modal.classList.add('visible');
-            timelineEl.innerHTML = '<div class="placeholder-text">正在加载轨迹...</div>';
-            document.getElementById('trajectory-modal-title').textContent = `${character.remarkName}的轨迹`;
-
-            try {
-                const prompt = generateTrajectoryPrompt(character);
-                // 修改：使用全局功能模型 API 设置（轨迹功能）
-                const functionalSettings = db.functionalApiSettings && Object.keys(db.functionalApiSettings).length > 0 && 
-                                           db.functionalApiSettings.url && db.functionalApiSettings.key && db.functionalApiSettings.model
-                                           ? db.functionalApiSettings 
-                                           : db.apiSettings; // 容错：如果功能模型未配置，回退到主聊天模型
-                const aiResponseText = await callAiApi([{ role: 'user', content: prompt }], functionalSettings);
-                const jsonMatch = aiResponseText.match(/\[[\s\S]*\]/); 
-                if (!jsonMatch) throw new Error("AI的回复中没有找到有效的JSON数组。");
-                
-                const trajectoryData = JSON.parse(jsonMatch[0]);
-                renderTrajectoryTimeline(trajectoryData, character.remarkName);
-
-            } catch (error) {
-                console.error('获取AI轨迹失败:', error);
-                timelineEl.innerHTML = `<div class="placeholder-text" style="color:red;">获取轨迹失败：${error.message}</div>`;
-            }
-        }
-    });
-
-    // --- 关闭弹窗的事件监听 ---
-    closeTrajectoryBtn.addEventListener('click', () => trajectoryModal.classList.remove('visible'));
-    trajectoryModal.addEventListener('click', (e) => {
-        if (e.target === trajectoryModal) trajectoryModal.classList.remove('visible');
-    });
-
-    closeHeartSoundBtn.addEventListener('click', () => heartSoundModal.classList.remove('visible'));
-    heartSoundModal.addEventListener('click', (e) => {
-        if (e.target === heartSoundModal) heartSoundModal.classList.remove('visible');
-    });
-
-    // 轨迹渲染函数（保持不变）
-    function renderTrajectoryTimeline(trajectoryData, characterName) {
-        const timeline = document.getElementById('trajectory-timeline');
-        timeline.innerHTML = '';
-        if (!trajectoryData || trajectoryData.length === 0) {
-            timeline.innerHTML = '<div class="placeholder-text">未能获取到轨迹信息。</div>';
-            return;
-        }
-        trajectoryData.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'trajectory-item';
-            div.innerHTML = `
-                <span class="trajectory-time">${item.time}</span>
-                <p class="trajectory-event">${item.event}</p>
-            `;
-            timeline.appendChild(div);
-        });
-    }
-}
-
-// ▲▲▲ 添加结束 ▲▲▲
-
-// --- 新代码结束 ---
-  // --- 新代码开始 ---
-// ===============================================================
-// START: 论坛配置功能
-// ===============================================================
-    // 数据和预设键
-    const PRES_KEY = 'forumPresets';
-    if (!db.forumSettings) {
-        db.forumSettings = {
-            worldview: '',
-            userPersona: '',
-            selectedCharIds: [],
-            allowNpcs: true,
-            allowUnrelated: false,
-            allowRomanticNpcs: false,
-            worldBookIds: []
-        };
-    }
-
-    // DOM 元素
-    const openConfigBtn = document.getElementById('open-forum-config-btn');
-    const configForm = document.getElementById('forum-config-form');
-    const worldviewInput = document.getElementById('forum-worldview');
-    const userPersonaInput = document.getElementById('forum-user-persona');
-    const charList = document.getElementById('forum-char-selection-list');
-    const allowNpcsToggle = document.getElementById('allow-npcs');
-    const allowUnrelatedToggle = document.getElementById('allow-unrelated');
-    const allowRomanticNpcsToggle = document.getElementById('allow-romantic-npcs');
-
-// ===============================================================
-// --- 新代码结束 ---
-
-// ▲▲▲ 粘贴到这里结束 ▲▲▲
 // === 聊天记录导入导出功能 ===
 /**
  * 导出当前聊天记录
@@ -5857,7 +5035,8 @@ async function triggerProactiveMessage(chatObject, type) {
             fullSystemPrompt = generatePrivateSystemPrompt(chatObject);
             historyForApi = chatObject.history.slice(-chatObject.maxMemory);
         } else {
-            fullSystemPrompt = generateGroupSystemPrompt(chatObject);
+            const groupPrompt = window.generateGroupSystemPrompt;
+            fullSystemPrompt = typeof groupPrompt === 'function' ? groupPrompt(chatObject) : '';
             historyForApi = chatObject.history.slice(-chatObject.maxMemory);
         }
 
@@ -5946,12 +5125,17 @@ async function triggerProactiveMessage(chatObject, type) {
                 };
 
                 if (type === 'group') {
-                    // 🆕 放宽正则匹配：支持中英文冒号
-                    const nameMatch = message.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)[:：]/);
-                    if (nameMatch) {
-                        const sender = chatObject.members.find(m => m.realName === nameMatch[1] || m.groupNickname === nameMatch[1]);
-                        if (sender) {
-                            message.senderId = sender.id;
+                    const resolveGroupSenderId = window.resolveGroupSenderIdFromContent;
+                    if (typeof resolveGroupSenderId === 'function') {
+                        const senderId = resolveGroupSenderId(message.content, chatObject);
+                        if (senderId) message.senderId = senderId;
+                    } else {
+                        const nameMatch = message.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)[:：]/);
+                        if (nameMatch) {
+                            const sender = chatObject.members.find(m => m.realName === nameMatch[1] || m.groupNickname === nameMatch[1]);
+                            if (sender) {
+                                message.senderId = sender.id;
+                            }
                         }
                     }
                 }
@@ -5994,265 +5178,6 @@ async function triggerProactiveMomentInteraction(character) {
 }
         init();
     });
-
-// START: 新增 - HTML小剧场安全交互处理函数
-// [修正] 将函数附加到 window 对象，使其成为全局函数，以便 HTML onclick 可以调用
-// START: 修复版 handleTheaterClick (精准定位，只操作当前剧场内部元素)
-window.handleTheaterClick = function(element, action, targetSelector, value) {
-    try {
-        const sourceElement = element && element.target ? element.target : element && element.currentTarget ? element.currentTarget : element;
-        if (!sourceElement || sourceElement.nodeType !== 1 || typeof sourceElement.closest !== 'function') {
-            return;
-        }
-        const theaterRoot = sourceElement.closest('.ai-generated-theater') || sourceElement.closest('.ai-theater');
-        
-        if (!theaterRoot) {
-            console.warn("未找到小剧场根容器，无法执行操作。");
-            return;
-        }
-
-        // 2. 在 *当前小剧场内部* 查找目标元素
-        // 这样即使页面上有100个 id="page1" 的元素，我们也只会找到当前这一个
-        const targetElement = theaterRoot.querySelector(targetSelector);
-        
-        if (!targetElement) {
-             // 如果直接查找失败，尝试查找带后缀的ID (因为我们之前加了后缀)
-             // 这一步是为了兼容旧的ID逻辑
-             const suffixMatch = theaterRoot.innerHTML.match(/id=["']([a-zA-Z0-9_-]+?)_([a-zA-Z0-9]{6})["']/);
-             if (suffixMatch) {
-                 const suffix = suffixMatch[2];
-                 const selectorWithoutHash = targetSelector.replace('#', '');
-                 const newSelector = `#${selectorWithoutHash}_${suffix}`;
-                 const retryTarget = theaterRoot.querySelector(newSelector);
-                 if (retryTarget) {
-                     performAction(retryTarget, action, value);
-                     return;
-                 }
-             }
-             return;
-        }
-
-        performAction(targetElement, action, value);
-
-    } catch (e) {
-        console.error("处理小剧场交互时出错:", e);
-    }
-
-    function performAction(el, act, val) {
-        switch (act) {
-            case 'toggle-class':
-                el.classList.toggle(val);
-                break;
-            case 'add-class':
-                el.classList.add(val);
-                break;
-            case 'remove-class':
-                el.classList.remove(val);
-                break;
-            case 'set-text':
-                el.textContent = val;
-                break;
-            case 'show': // 专门用于页面切换
-                el.style.display = 'block';
-                break;
-            case 'hide': // 专门用于页面切换
-                el.style.display = 'none';
-                break;
-             case 'switch-tab': 
-                // 这是一个高级操作：隐藏当前组的所有其他页，只显示目标页
-                // 需要按钮提供 grouping class，例如 "tab-page"
-                const groupClass = val; // 假设 val 传的是 "tab-page"
-                const container = el.parentElement; 
-                if (container) {
-                    const allTabs = container.querySelectorAll('.' + groupClass);
-                    allTabs.forEach(tab => tab.style.display = 'none'); // 隐藏同一组的所有页
-                    el.style.display = 'block'; // 显示目标页
-                }
-                break;
-        }
-    }
-}
-
-// END: 新增 - HTML小剧场安全交互处理函数
-
-
-// === ChatGPT 插入脚本：我的人设预设逻辑（放到页面脚本块） === 
-
-;(function(){
-  if (window._myPersonaPresetScriptLoaded) return;
-  window._myPersonaPresetScriptLoaded = true;
-
-  // 存取 localStorage
-  function _getMyPersonaPresets() {
-    try { return JSON.parse(localStorage.getItem('myPersonaPresets') || '[]'); }
-    catch(e){ return []; }
-  }
-  function _saveMyPersonaPresets(arr) {
-    localStorage.setItem('myPersonaPresets', JSON.stringify(arr || []));
-  }
-
-  // 填充下拉
-  function populateMyPersonaSelect() {
-    const sel = document.getElementById('mypersona-preset-select');
-    if (!sel) return;
-    const presets = _getMyPersonaPresets();
-    sel.innerHTML = '<option value="">— 选择预设 —</option>';
-    presets.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
-      sel.appendChild(opt);
-    });
-  }
-
-  // 保存当前侧栏（我的人设 + 我的头像）为预设
-  function saveCurrentMyPersonaAsPreset() {
-    const personaEl = document.getElementById('setting-my-persona');
-    const avatarEl = document.getElementById('setting-my-avatar-preview');
-    if (!personaEl || !avatarEl) return (window.showToast && showToast('找不到我的人设或头像控件')) || alert('找不到我的人设或头像控件');
-    const persona = personaEl.value.trim();
-    const avatar = avatarEl.src || '';
-    if (!persona && !avatar) return (window.showToast && showToast('人设和头像都为空，无法保存')) || alert('人设和头像都为空，无法保存');
-    const name = prompt('请输入预设名称（将覆盖同名预设）：');
-    if (!name) return;
-    const presets = _getMyPersonaPresets();
-    const idx = presets.findIndex(p => p.name === name);
-    const preset = { name, persona, avatar };
-    if (idx >= 0) presets[idx] = preset; else presets.push(preset);
-    _saveMyPersonaPresets(presets);
-    populateMyPersonaSelect();
-    (window.showToast && showToast('我的人设预设已保存')) || console.log('我的人设预设已保存');
-  }
-
-  // 将预设应用到当前聊天（同时写 UI + db.characters，并保存）
-  async function applyMyPersonaPresetToCurrentChat(presetName) {
-    const presets = _getMyPersonaPresets();
-    const p = presets.find(x => x.name === presetName);
-    if (!p) { (window.showToast && showToast('未找到该预设')) || alert('未找到该预设'); return; }
-
-    // 更新界面
-    const personaEl = document.getElementById('setting-my-persona');
-    const avatarEl = document.getElementById('setting-my-avatar-preview');
-    if (personaEl) personaEl.value = p.persona || '';
-    if (avatarEl) avatarEl.src = p.avatar || '';
-
-    // 尝试写入当前 chat 对象（与气泡预设做法一致）
-    try {
-      if (typeof currentChatId !== 'undefined' && window.db && Array.isArray(db.characters)) {
-        const e = db.characters.find(c => c.id === currentChatId);
-        if (e) {
-          e.myPersona = p.persona || '';
-          e.myAvatar = p.avatar || '';
-          if (typeof saveData === 'function') await saveData();
-          (window.showToast && showToast('预设已应用并保存到当前聊天')) || console.log('预设已应用');
-          // 刷新侧栏与列表以显示更新
-          if (typeof loadSettingsToSidebar === 'function') try{ loadSettingsToSidebar(); }catch(e){}
-          if (typeof renderChatList === 'function') try{ renderChatList(); }catch(e){}
-        }
-      } else {
-        (window.showToast && showToast('预设已应用到界面（未检测到当前聊天保存入口）')) || console.log('预设已应用到界面');
-      }
-    } catch(err) {
-      console.error('applyMyPersonaPresetToCurrentChat error', err);
-    }
-  }
-
-  // 管理 Modal
-  function openManageMyPersonaModal() {
-    const modal = document.getElementById('mypersona-presets-modal');
-    const list = document.getElementById('mypersona-presets-list');
-    if (!modal || !list) return;
-    list.innerHTML = '';
-    const presets = _getMyPersonaPresets();
-    if (!presets.length) list.innerHTML = '<p style="color:#888;margin:6px 0;">暂无预设</p>';
-    presets.forEach((p, idx) => {
-      const row = document.createElement('div');
-      row.style.display = 'flex';
-      row.style.justifyContent = 'space-between';
-      row.style.alignItems = 'center';
-      row.style.padding = '8px 0';
-      row.style.borderBottom = '1px solid #f0f0f0';
-
-      const nameDiv = document.createElement('div');
-      nameDiv.style.flex = '1';
-      nameDiv.style.whiteSpace = 'nowrap';
-      nameDiv.style.overflow = 'hidden';
-      nameDiv.style.textOverflow = 'ellipsis';
-      nameDiv.textContent = p.name;
-      row.appendChild(nameDiv);
-
-      const btnWrap = document.createElement('div');
-      btnWrap.style.display = 'flex';
-      btnWrap.style.gap = '6px';
-
-      const applyBtn = document.createElement('button');
-      applyBtn.className = 'btn btn-primary';
-      applyBtn.style.padding = '6px 8px;border-radius:8px';
-      applyBtn.textContent = '应用';
-      applyBtn.onclick = function(){ applyMyPersonaPresetToCurrentChat(p.name); modal.style.display = 'none'; };
-
-      const renameBtn = document.createElement('button');
-      renameBtn.className = 'btn';
-      renameBtn.style.padding = '6px 8px;border-radius:8px';
-      renameBtn.textContent = '重命名';
-      renameBtn.onclick = function(){
-        const newName = prompt('输入新名称：', p.name);
-        if (!newName) return;
-        const all = _getMyPersonaPresets();
-        all[idx].name = newName;
-        _saveMyPersonaPresets(all);
-        openManageMyPersonaModal();
-        populateMyPersonaSelect();
-      };
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'btn';
-      deleteBtn.style.padding = '6px 8px;border-radius:8px;color:#e53935';
-      deleteBtn.textContent = '删除';
-      deleteBtn.onclick = function(){
-        if (!confirm('确认删除该预设？')) return;
-        const all = _getMyPersonaPresets();
-        all.splice(idx,1);
-        _saveMyPersonaPresets(all);
-        openManageMyPersonaModal();
-        populateMyPersonaSelect();
-      };
-
-      btnWrap.appendChild(applyBtn);
-      btnWrap.appendChild(renameBtn);
-      btnWrap.appendChild(deleteBtn);
-      row.appendChild(btnWrap);
-
-      list.appendChild(row);
-    });
-
-    modal.style.display = 'flex';
-  }
-
-  // 绑定 UI
-  function bind() {
-    populateMyPersonaSelect();
-    const saveBtn = document.getElementById('mypersona-save-btn');
-    const manageBtn = document.getElementById('mypersona-manage-btn');
-    const applyBtn = document.getElementById('mypersona-apply-btn');
-    const select = document.getElementById('mypersona-preset-select');
-    const modalClose = document.getElementById('mypersona-close-modal');
-
-    if (saveBtn) saveBtn.addEventListener('click', saveCurrentMyPersonaAsPreset);
-    if (manageBtn) manageBtn.addEventListener('click', openManageMyPersonaModal);
-    if (applyBtn) applyBtn.addEventListener('click', function(){ const v = select.value; if(!v) return (window.showToast && showToast('请选择要应用的预设')) || alert('请选择要应用的预设'); applyMyPersonaPresetToCurrentChat(v); });
-    if (modalClose) modalClose.addEventListener('click', function(){ document.getElementById('mypersona-presets-modal').style.display='none'; });
-
-    // 页面可能在加载后改变侧栏数据，尝试在 DOMContentLoaded 或已有绑定后初始化
-    // 当有其他代码重置 sidebar 时，可手动调用 populateMyPersonaSelect()
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else setTimeout(bind,50);
-  
-
-})();
-
-
 
   // 初始化默认值（可按需替换为动态数据）
   (function(){
